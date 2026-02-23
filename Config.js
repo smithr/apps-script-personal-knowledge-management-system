@@ -46,7 +46,7 @@ const STATUS = {
 const SOURCE = {
   YOUTUBE: 'YouTube',
   GMAIL:   'Gmail',
-  TRELLO:  'Tasks',
+  TASKS:   'Tasks',
 };
 
 // ─── Property Accessors ───────────────────────────────────────────────────────

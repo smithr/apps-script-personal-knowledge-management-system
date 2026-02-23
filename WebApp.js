@@ -64,10 +64,6 @@ function doGet(e) {
  */
 function handleSave(itemId, item) {
   try {
-    // TODO: The full summary and structured fields (keyPoints, actionItems) are not
-    //   stored in Sheets — only shortSummary is. For Docs.js to append a rich entry,
-    //   either store fullSummary in an additional column, or re-summarize here.
-    //   For now, a minimal summary object is constructed from available Sheets data.
     const summary = {
       shortSummary: item.summary,
       fullSummary:  item.summary,

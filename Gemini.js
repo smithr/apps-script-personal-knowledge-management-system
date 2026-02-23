@@ -23,14 +23,7 @@ const OUTPUT_SCHEMA = `{
   "actionItems":  ["action 1"]
 }`;
 
-const PROMPT_YOUTUBE = `You are an expert note-taker analyzing a YouTube video.
-Return ONLY a valid JSON object matching this schema — no preamble, no markdown fences:
-${OUTPUT_SCHEMA}
-
-Instructions:
-- shortSummary: 2-3 sentences on the core topic and whether it is worth deeper engagement
-- fullSummary:
-  Task: Analyze this video and generate a highly detailed, dense summary of the core concepts.
+const FULL_SUMMARY_INSTRUCTIONS = `Task: Analyze this video and generate a highly detailed, dense summary of the core concepts.
   Instruction: Act as an expert note-taker. Do not just list the topics. For every concept, extract the specific reasoning, the "how-to" mechanics, and the ultimate value to the user. Write as if you are transcribing the most important points word-for-word.
   Formatting Rules:
   1. No Introductions: Start immediately with the first point.
@@ -38,6 +31,16 @@ Instructions:
   3. Depth Requirement: Each paragraph must explain what the concept is, why the speaker recommends it, and how to implement it.
   4. Use Bullets. Each paragraph should be in a separate bullet. 
   5. External Links: Conclude with a single sentence noting any external resources (GitHub, docs) mentioned, with timestamps.
+  Tone: Highly technical, objective, and information-dense.`
+
+const PROMPT_YOUTUBE = `You are an expert note-taker analyzing a YouTube video.
+Return ONLY a valid JSON object matching this schema — no preamble, no markdown fences:
+${OUTPUT_SCHEMA}
+
+Instructions:
+- shortSummary: 2-3 sentences on the core topic and whether it is worth deeper engagement
+- fullSummary:
+  ${FULL_SUMMARY_INSTRUCTIONS}
   Tone: Highly technical, objective, and information-dense.
 - tags: 2-5 lowercase topic tags (e.g. "productivity", "ai", "leadership")
 - keyPoints: the 3-7 most important specific points or recommendations from the video
@@ -49,7 +52,8 @@ ${OUTPUT_SCHEMA}
 
 Instructions:
 - shortSummary: 2-3 sentences covering what the email is about and what (if anything) is required
-- fullSummary: summary of the email's content, purpose, and context
+- fullSummary: 
+  ${FULL_SUMMARY_INSTRUCTIONS}
 - tags: 2-5 lowercase topic tags
 - keyPoints: key facts, decisions, or information from the email
 - actionItems: any explicit or implied action items, deadlines, or decisions required`;
@@ -62,7 +66,8 @@ Instructions:
 - The task title is the topic or URL to research/summarize
 - The notes field provides additional context
 - shortSummary: 2-3 sentences on what this topic is and why it might be worth exploring
-- fullSummary: substantive overview of the topic or content at the URL
+- fullSummary: 
+  ${FULL_SUMMARY_INSTRUCTIONS}
 - tags: 2-5 lowercase topic tags
 - keyPoints: key facts or concepts about this topic
 - actionItems: concrete next steps if any are implied`;
@@ -78,7 +83,12 @@ Instructions:
  * @returns {Object} Summary with shortSummary, fullSummary, tags, keyPoints, actionItems
  * @throws {Error} On API failure or unparseable JSON response
  */
+// Delay between Gemini API calls to avoid rate limit errors (milliseconds)
+const GEMINI_RATE_LIMIT_DELAY_MS = 2000;
+
 function summarizeItem(item) {
+  Utilities.sleep(GEMINI_RATE_LIMIT_DELAY_MS);
+
   const model    = getProperty(PROP.GEMINI_MODEL);
   const apiKey   = getProperty(PROP.GEMINI_API_KEY);
   // https://generativelanguage.googleapis.com/v1beta/models/${getProperty(PROP.GEMINI_MODEL)}:generateContent?key=${getProperty(PROP.GEMINI_API_KEY)}`;
@@ -129,6 +139,11 @@ function buildRequestParts(item, prompt) {
       { file_data: { file_uri: item.content } },
     ];
   }
+  if (item.sourceType === SOURCE.TASKS) {
+    return [
+      { text: `${prompt}}\n\nURL: ${item.url}` },
+    ];
+  }
   return [
     { text: `${prompt}\n\n---\n\n${item.content}` },
   ];
@@ -144,13 +159,17 @@ function buildRequestParts(item, prompt) {
  * @returns {Object}
  */
 function parseSummaryJson(rawText, item) {
-  const cleaned = rawText
-    .replace(/^```(json)?\s*/i, '')
-    .replace(/\s*```$/, '')
-    .trim();
+  // Extract the JSON object by finding the outermost { } bounds.
+  // This handles cases where Gemini appends commentary after the closing brace.
+  const start = rawText.indexOf('{');
+  const end   = rawText.lastIndexOf('}');
+
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`Gemini response contained no JSON object for item ${item.id}`);
+  }
 
   try {
-    return JSON.parse(cleaned);
+    return JSON.parse(rawText.slice(start, end + 1));
   } catch (e) {
     throw new Error(`Gemini returned unparseable JSON for item ${item.id}: ${e.message}`);
   }

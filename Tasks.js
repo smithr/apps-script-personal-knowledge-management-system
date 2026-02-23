@@ -5,6 +5,7 @@
  * Tasks are marked completed after processing so they clear from the active list.
  */
 
+
 /**
  * Entry point for the Tasks pipeline. Called by runFrequentPipeline() in Code.js.
  */
@@ -14,10 +15,10 @@ function runTasksPipeline() {
   Logger.log(`Tasks: ${newItems.length} new task(s) found`);
 
   newItems.forEach(item => {
-    // TODO: Call summarizeItem(item) from Gemini.js
-    // TODO: Call addItemToInbox(item, summary) from Sheets.js
-    // TODO: Call addProcessedId(item.id) from Config.js
-    // TODO: Call completeTask(taskListId, item.rawMetadata.taskId)
+    let summary = summarizeItem(item);
+    addItemToInbox(item, summary);
+    addProcessedId(item.id);
+    completeTask(taskListId, item.rawMetadata.taskId)
   });
 }
 
@@ -29,8 +30,6 @@ function runTasksPipeline() {
  * @returns {Object[]} Array of normalized items (sourceType: SOURCE.TASKS)
  */
 function fetchPendingTasks(taskListId) {
-  // TODO: Tasks is an Advanced Service — enable it in the Apps Script editor
-  //   Services > Tasks API v1
   const response = Tasks.Tasks.list(taskListId, { showCompleted: false });
   const newItems = [];
 
@@ -39,8 +38,9 @@ function fetchPendingTasks(taskListId) {
     if (isProcessed(task.id)) return;
 
     const notes = task.notes || '';
+    const urlFromTitle = extractUrl(task.title);
     // If the notes field contains a URL, use it as the item URL; otherwise use a Tasks deep link
-    const url = extractUrl(notes) || `https://tasks.google.com/`;
+    const url = urlFromTitle || extractUrl(notes) || `https://tasks.google.com/`;
 
     newItems.push(normalizeItem({
       sourceType:  SOURCE.TASKS,
@@ -61,7 +61,6 @@ function fetchPendingTasks(taskListId) {
  * @param {string} taskId
  */
 function completeTask(taskListId, taskId) {
-  // TODO: Tasks is an Advanced Service — must be enabled
   Tasks.Tasks.patch({ status: 'completed' }, taskListId, taskId);
 }
 
@@ -74,4 +73,12 @@ function completeTask(taskListId, taskId) {
 function extractUrl(text) {
   const match = String(text).match(/https?:\/\/[^\s]+/);
   return match ? match[0] : null;
+}
+
+
+function debugGetTasksListIds() {
+  const lists = Tasks.Tasklists.list();
+  lists.items.forEach(list => {
+    Logger.log(`${list.title}: ${list.id}`);
+  });
 }
