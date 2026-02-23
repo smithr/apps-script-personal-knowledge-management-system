@@ -20,11 +20,10 @@ node_modules/
 .vscode/
 .mcp.json
 .ripgreprc
-
-# Git internals that sometimes surface as phantom files due to Claude bug
+.idea
+.vscode
+hooks
+objects
+refs
 HEAD
 config
-hooks/
-objects/
-refs/
-
