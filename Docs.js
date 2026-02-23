@@ -46,33 +46,63 @@ function saveItemToDoc(item, summary, selectedTags) {
 
 /**
  * Finds the current active quarterly Topic Doc for a tag.
- * Creates a new doc if none exists for the current quarter, or if the existing
- * doc has reached the 50-item rotation threshold.
+ * Creates a new doc if none exists for the current quarter. If the current doc
+ * has reached the 50-item rotation threshold, moves to the next rotation
+ * (e.g. "ai - 2026-Q1" → "ai - 2026-Q1-2" → "ai - 2026-Q1-3").
  *
  * @param {string} tag      - Topic tag name (e.g. "ai-research")
  * @param {string} folderId - Drive folder ID for this topic
  * @returns {GoogleAppsScript.Drive.File}
  */
 function getOrCreateTopicDoc(tag, folderId) {
-  const quarter  = getCurrentQuarterLabel();
-  const docName  = `${tag} - ${quarter}`;
-  const folder   = DriveApp.getFolderById(folderId);
-  const existing = folder.getFilesByName(docName);
+  const quarter = getCurrentQuarterLabel();
+  const folder  = DriveApp.getFolderById(folderId);
 
-  if (existing.hasNext()) {
+  // Walk rotation slots (1 = base name, 2+ = suffixed) until we find one
+  // that either doesn't exist yet (create it) or still has capacity.
+  for (let rotation = 1; ; rotation++) {
+    const docName  = rotation === 1
+      ? `${tag} - ${quarter}`
+      : `${tag} - ${quarter}-${rotation}`;
+    const existing = folder.getFilesByName(docName);
+
+    if (!existing.hasNext()) {
+      const newDoc  = DocumentApp.create(docName);
+      const newFile = DriveApp.getFileById(newDoc.getId());
+      newFile.moveTo(folder);
+      Logger.log(`Docs: created new doc "${docName}"`);
+      return newFile;
+    }
+
     const docFile = existing.next();
-    // TODO: Check item count in doc; if >= 50, rotate to a new doc
-    //   Rotation: append a suffix like "-2" to the new doc name
-    return docFile;
+    if (countEntriesInDoc(docFile.getId()) < 50) {
+      return docFile;
+    }
+
+    Logger.log(`Docs: "${docName}" is full — checking next rotation`);
+  }
+}
+
+/**
+ * Counts the number of entries in a Topic Doc by counting HEADING2 paragraphs.
+ * Each entry appended by appendSectionToDoc adds exactly one HEADING2.
+ *
+ * @param {string} docId
+ * @returns {number}
+ */
+function countEntriesInDoc(docId) {
+  const body  = DocumentApp.openById(docId).getBody();
+  let   count = 0;
+
+  for (let i = 0; i < body.getNumChildren(); i++) {
+    const child = body.getChild(i);
+    if (child.getType() === DocumentApp.ElementType.PARAGRAPH &&
+        child.asParagraph().getHeading() === DocumentApp.ParagraphHeading.HEADING2) {
+      count++;
+    }
   }
 
-  // Create a new quarterly doc
-  const newDoc  = DocumentApp.create(docName);
-  const newFile = DriveApp.getFileById(newDoc.getId());
-  newFile.moveTo(folder);
-
-  Logger.log(`Docs: created new doc "${docName}"`);
-  return newFile;
+  return count;
 }
 
 /**
