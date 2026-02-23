@@ -15,12 +15,12 @@ flowchart TD
     YT & GM & TK --> DEDUP[Deduplicate]
     DEDUP --> GEMINI[Gemini Summarization]
     GEMINI --> INBOX[(Sheets Inbox)]
-    INBOX --> DIGEST[Digest Email\nmultiple times/day]
+    INBOX --> DIGEST["Digest Email<br/>multiple times/day"]
 
     DIGEST --> CHOICE{Save or Dismiss?}
-    CHOICE -->|Save| DOC[Append to Topic Doc\nin Google Drive]
-    CHOICE -->|Dismiss| DISMISS[Update status\nto Dismissed]
-    DOC --> NLM[Available in\nNotebookLM]
+    CHOICE -->|Save| DOC["Append to Topic Doc<br/>in Google Drive"]
+    CHOICE -->|Dismiss| DISMISS["Update status<br/>to Dismissed"]
+    DOC --> NLM["Available in<br/>NotebookLM"]
 ```
 
 **Phase 1 — Collect:** Time-driven triggers poll each source, deduplicate against previously processed IDs, summarize new items via Gemini, and write them to a Sheets inbox.
