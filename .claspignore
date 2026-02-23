@@ -1,0 +1,13 @@
+# always ignore these directories, regardless of extension
+.git/**
+node_modules/**
+
+# ignore everything else by default…
+**/**
+
+# except these extensions
+!appsscript.json
+!**/*.gs
+!**/*.js
+!**/*.ts
+!**/*.html
