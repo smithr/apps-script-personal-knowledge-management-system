@@ -24,7 +24,7 @@ function addItemToInbox(item, summary) {
   row[COL.SOURCE_TYPE - 1] = item.sourceType;
   row[COL.TITLE       - 1] = item.title;
   row[COL.URL         - 1] = item.url;
-  row[COL.SUMMARY     - 1] = summary.shortSummary;
+  row[COL.SUMMARY     - 1] = summary.fullSummary;
   row[COL.TAGS        - 1] = (summary.tags || []).join(', ');
   row[COL.STATUS      - 1] = STATUS.PENDING;
   row[COL.DIGEST_SENT - 1] = false;

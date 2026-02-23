@@ -69,7 +69,7 @@ function buildItemCard(item) {
   const dismissUrl = `${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=dismiss`;
 
   const title      = escapeHtml(item.title);
-  const summary    = escapeHtml(item.summary);
+  const summary    = formatSummaryAsHtml(item.summary);
   const tags       = escapeHtml(item.tags);
   const sourceType = escapeHtml(item.sourceType);
   const date       = new Date(item.dateAdded).toLocaleDateString();
@@ -101,7 +101,7 @@ function buildItemCard(item) {
         <a href="${itemUrl}" style="color: #1a0dab; text-decoration: none;">${title}</a>
       </h2>
 
-      <p style="margin: 0 0 8px; line-height: 1.5;">${summary}</p>
+      <div style="margin: 0 0 8px; line-height: 1.6;">${summary}</div>
 
       ${tags ? `<p style="margin: 0 0 12px; font-size: 12px; color: #666;">Tags: ${tags}</p>` : ''}
 
@@ -128,4 +128,38 @@ function buildItemCard(item) {
       </div>
     </div>
   `;
+}
+
+/**
+ * Converts a plain-text summary (with • bullets and newlines) to formatted HTML.
+ * Lines starting with •, -, or * become <li> items grouped in a <ul>.
+ * All other non-empty lines become <p> elements.
+ * All text content is escaped before being embedded in HTML.
+ *
+ * @param {string} text
+ * @returns {string} HTML string
+ */
+function formatSummaryAsHtml(text) {
+  const lines     = String(text).split('\n').map(l => l.trim()).filter(l => l);
+  const parts     = [];
+  let listItems   = [];
+
+  lines.forEach(line => {
+    if (/^[•\-\*]/.test(line)) {
+      const content = escapeHtml(line.replace(/^[•\-\*]\s*/, ''));
+      listItems.push(`<li style="margin-bottom: 6px;">${content}</li>`);
+    } else {
+      if (listItems.length > 0) {
+        parts.push(`<ul style="margin: 0 0 8px; padding-left: 20px;">${listItems.join('')}</ul>`);
+        listItems = [];
+      }
+      parts.push(`<p style="margin: 0 0 8px;">${escapeHtml(line)}</p>`);
+    }
+  });
+
+  if (listItems.length > 0) {
+    parts.push(`<ul style="margin: 0 0 8px; padding-left: 20px;">${listItems.join('')}</ul>`);
+  }
+
+  return parts.join('');
 }
