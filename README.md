@@ -6,20 +6,21 @@ A personal knowledge management system built on Google Apps Script. Automaticall
 
 The system operates in two phases separated by a deliberate human approval step — nothing reaches permanent storage without you explicitly saving it.
 
-```
-YouTube ──┐
-Gmail  ────┼──► Deduplicate ──► Gemini Summary ──► Sheets Inbox
-Tasks  ────┘                                              │
-                                                          ▼
-                                               Digest Email (multiple/day)
-                                               [Save to PKM] or [Dismiss]
-                                                          │
-                                             ┌────────────┴────────────┐
-                                           Save                     Dismiss
-                                             │                          │
-                                    Append to Topic Doc         Update status
-                                    Update Sheets row
-                                    Available in NotebookLM
+```mermaid
+flowchart TD
+    YT[YouTube]
+    GM[Gmail]
+    TK[Google Tasks]
+
+    YT & GM & TK --> DEDUP[Deduplicate]
+    DEDUP --> GEMINI[Gemini Summarization]
+    GEMINI --> INBOX[(Sheets Inbox)]
+    INBOX --> DIGEST[Digest Email\nmultiple times/day]
+
+    DIGEST --> CHOICE{Save or Dismiss?}
+    CHOICE -->|Save| DOC[Append to Topic Doc\nin Google Drive]
+    CHOICE -->|Dismiss| DISMISS[Update status\nto Dismissed]
+    DOC --> NLM[Available in\nNotebookLM]
 ```
 
 **Phase 1 — Collect:** Time-driven triggers poll each source, deduplicate against previously processed IDs, summarize new items via Gemini, and write them to a Sheets inbox.
