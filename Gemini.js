@@ -106,8 +106,8 @@ function summarizeItem(item) {
       parts: buildRequestParts(item, prompt),
     }],
     generationConfig: {
-      // Constrain output to reduce risk of preamble or markdown fences
       temperature: 0.2,
+      responseMimeType: 'application/json',
     },
   };
 

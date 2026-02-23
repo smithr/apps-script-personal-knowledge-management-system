@@ -13,9 +13,15 @@ function runGmailPipeline() {
   Logger.log(`Gmail: ${newItems.length} new message(s) found`);
 
   newItems.forEach(item => {
-    // TODO: Call summarizeItem(item) from Gemini.js
-    // TODO: Call addItemToInbox(item, summary) from Sheets.js
-    // TODO: Call addProcessedId(item.id) from Config.js
+    try {
+      const summary = summarizeItem(item);
+      addItemToInbox(item, summary);
+    } catch (e) {
+      Logger.log(`Gmail: failed to process "${item.title}" — skipping. Error: ${e.message}`);
+    } finally {
+      // Always mark as processed to prevent infinite retries on persistent failures
+      addProcessedId(item.rawMetadata.threadId);
+    }
   });
 }
 
@@ -27,7 +33,7 @@ function runGmailPipeline() {
  */
 function fetchLabeledMessages() {
   const label = getProperty(PROP.GMAIL_LABEL);
-  const threads = GmailApp.search(`label:${label}`);
+  const threads = GmailApp.search(`label:${label} in:inbox`);
   const newItems = [];
 
   threads.forEach(thread => {
@@ -38,7 +44,7 @@ function fetchLabeledMessages() {
     const subject = message.getSubject() || '(no subject)';
     const sender  = message.getFrom();
     const bodyHtml = message.getBody();
-    const bodyText = stripHtml(bodyHtml);
+    const bodyText = stripHtml(bodyHtml).slice(0, 8000);
 
     newItems.push(normalizeItem({
       sourceType:  SOURCE.GMAIL,

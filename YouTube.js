@@ -27,9 +27,11 @@ function runYouTubePipeline() {
       try {
         const summary = summarizeItem(item);
         addItemToInbox(item, summary);
-        addProcessedId(item.id);
       } catch (e) {
-        Logger.log(`YouTube: failed to process "${item.title}" — will retry next run. Error: ${e.message}`);
+        Logger.log(`YouTube: failed to process "${item.title}" — skipping. Error: ${e.message}`);
+      } finally {
+        // Always mark as processed to prevent infinite retries on persistent failures
+        addProcessedId(item.rawMetadata.videoId);
       }
     });
   });
@@ -66,7 +68,7 @@ function fetchPlaylistVideos(playlistId) {
         title:       item.snippet.title,
         url:         videoUrl,
         content:     videoUrl, // Gemini receives the URL directly for video understanding
-        rawMetadata: { playlistId },
+        rawMetadata: { videoId, playlistId },
       }));
     });
 

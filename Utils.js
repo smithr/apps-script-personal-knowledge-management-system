@@ -47,6 +47,8 @@ function escapeHtml(str) {
 
 /**
  * Strips HTML tags from a string and collapses whitespace to single spaces.
+ * Removes <style>, <script>, and <head> blocks (including their content) first
+ * so that CSS rules and scripts don't end up in the extracted text.
  * Used by the Gmail connector to extract plain text from email bodies.
  *
  * @param {string} html
@@ -54,6 +56,9 @@ function escapeHtml(str) {
  */
 function stripHtml(html) {
   return String(html)
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, ' ')
     .replace(/<[^>]*>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();

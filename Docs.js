@@ -17,17 +17,15 @@
 
 /**
  * Saves an approved item to its Topic Doc(s).
- * Called by the WebApp when a user clicks [Save to PKM].
+ * Called by the WebApp after the user confirms their tag selection.
  *
- * For items with multiple tags, the item is appended to the doc for each
- * tag that has a configured folder in the Config tab.
- *
- * @param {Object} item    - Normalized item
- * @param {Object} summary - Structured summary from Gemini
- * @returns {string} Deep link URL to the appended section (first tag's doc)
+ * @param {Object}   item         - Normalized item
+ * @param {Object}   summary      - Structured summary from Gemini
+ * @param {string[]} [selectedTags] - Explicit tag list from the user; falls back to summary.tags
+ * @returns {string} Deep link URL to the appended section (first successful doc)
  */
-function saveItemToDoc(item, summary) {
-  const tags = (summary.tags || []).filter(tag => tag);
+function saveItemToDoc(item, summary, selectedTags) {
+  const tags = (selectedTags || summary.tags || []).filter(tag => tag);
   let primaryDocLink = '';
 
   tags.forEach((tag, index) => {

@@ -10,7 +10,10 @@
  * This ensures approval links only function when the user is authenticated,
  * preventing unintended saves if a link is forwarded.
  *
- * Request format: ?id=ITEM_ID&action=save|dismiss
+ * Request format:
+ *   ?id=ITEM_ID&action=save       — show tag selection page
+ *   ?id=ITEM_ID&action=confirm&tags=tag1&tags=tag2  — save to selected tags
+ *   ?id=ITEM_ID&action=dismiss    — dismiss item
  */
 
 /**
@@ -20,19 +23,17 @@
  * @returns {GoogleAppsScript.HTML.HtmlOutput}
  */
 function doGet(e) {
-  const params = e.parameter || {};
+  const params = e.parameter  || {};
   const itemId = params.id;
   const action = params.action;
 
-  // Validate required parameters
   if (!itemId || !action) {
     return buildConfirmationPage('Invalid request — missing id or action parameter.');
   }
-  if (action !== 'save' && action !== 'dismiss') {
-    return buildConfirmationPage(`Invalid action: "${escapeHtml(action)}". Expected "save" or "dismiss".`);
+  if (action !== 'save' && action !== 'confirm' && action !== 'dismiss') {
+    return buildConfirmationPage(`Invalid action: "${escapeHtml(action)}".`);
   }
 
-  // Look up the item in Sheets
   const found = getItemById(itemId);
   if (!found) {
     return buildConfirmationPage('Item not found. It may have already been removed.');
@@ -40,44 +41,152 @@ function doGet(e) {
 
   const item = found.data;
 
-  // Idempotency: if already actioned, confirm without re-processing
   if (item.status === STATUS.SAVED || item.status === STATUS.DISMISSED) {
     return buildConfirmationPage(
       `This item was already ${item.status.toLowerCase()}. No changes made.`
     );
   }
 
-  // Process the action
   if (action === 'save') {
-    return handleSave(itemId, item);
-  } else {
-    return handleDismiss(itemId, item);
+    return handleSaveSelection(itemId, item);
   }
+  if (action === 'confirm') {
+    const selectedTags = (e.parameters.tags || []).filter(t => t);
+    return handleSaveConfirm(itemId, item, selectedTags);
+  }
+  return handleDismiss(itemId, item);
 }
 
 /**
- * Handles the save action: writes to Doc, updates Sheets.
+ * Shows a tag selection page. Configured tags are listed as checkboxes;
+ * tags Gemini assigned to the item are pre-checked.
  *
  * @param {string} itemId
- * @param {Object} item   - Row object from Sheets
+ * @param {Object} item - Row object from Sheets
  * @returns {GoogleAppsScript.HTML.HtmlOutput}
  */
-function handleSave(itemId, item) {
+function handleSaveSelection(itemId, item) {
+  const configuredTags = getConfiguredTags();
+  const itemTags = item.tags
+    ? item.tags.split(',').map(t => t.trim().toLowerCase())
+    : [];
+  const webAppUrl = getProperty(PROP.WEBAPP_URL);
+
+  if (configuredTags.length === 0) {
+    return buildConfirmationPage(
+      'No topics are configured. Add tag → folder mappings to the Config tab in your Google Sheet first.'
+    );
+  }
+
+  const checkboxes = configuredTags.map(tag => {
+    const checked = itemTags.includes(tag.toLowerCase()) ? 'checked' : '';
+    return `
+      <label style="display: flex; align-items: center; gap: 10px; padding: 8px 0;
+                    border-bottom: 1px solid #f0f0f0; cursor: pointer;">
+        <input type="checkbox" name="tags" value="${escapeHtml(tag)}" ${checked}
+               style="width: 16px; height: 16px; cursor: pointer;">
+        <span>${escapeHtml(tag)}</span>
+      </label>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Save to PKM</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+        background: #f8f9fa;
+      }
+      .card {
+        background: white;
+        border-radius: 8px;
+        padding: 28px 32px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        width: 100%;
+        max-width: 420px;
+      }
+      h2 { font-size: 15px; margin: 0 0 4px; color: #222; }
+      .subtitle { font-size: 13px; color: #888; margin: 0 0 20px; }
+      .tag-list { margin-bottom: 20px; }
+      .btn {
+        display: inline-block;
+        background: #1a73e8;
+        color: white;
+        padding: 8px 20px;
+        border-radius: 4px;
+        border: none;
+        font-size: 14px;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      .btn-secondary {
+        background: #f1f3f4;
+        color: #444;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h2>${escapeHtml(item.title)}</h2>
+      <p class="subtitle">Select topics to save this item to:</p>
+      <form method="GET" action="${webAppUrl}">
+        <input type="hidden" name="id" value="${escapeHtml(itemId)}">
+        <input type="hidden" name="action" value="confirm">
+        <div class="tag-list">${checkboxes}</div>
+        <button type="submit" class="btn">Save</button>
+        <a href="${webAppUrl}?id=${encodeURIComponent(itemId)}&action=dismiss"
+           class="btn btn-secondary">Dismiss</a>
+      </form>
+    </div>
+  </body>
+</html>`;
+
+  return HtmlService.createHtmlOutput(html)
+    .setTitle('Save to PKM')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+}
+
+/**
+ * Handles the confirmed save: writes to the selected Topic Docs, updates Sheets.
+ *
+ * @param {string}   itemId
+ * @param {Object}   item         - Row object from Sheets
+ * @param {string[]} selectedTags - Tags chosen by the user on the selection page
+ * @returns {GoogleAppsScript.HTML.HtmlOutput}
+ */
+function handleSaveConfirm(itemId, item, selectedTags) {
+  if (selectedTags.length === 0) {
+    return buildConfirmationPage('No topics selected — item was not saved.');
+  }
+
   try {
     const summary = {
       shortSummary: item.summary,
       fullSummary:  item.summary,
-      tags:         item.tags ? item.tags.split(',').map(t => t.trim()) : [],
+      tags:         selectedTags,
       keyPoints:    [],
       actionItems:  [],
     };
 
-    const docLink = saveItemToDoc(item, summary);
+    const docLink = saveItemToDoc(item, summary, selectedTags);
     updateDocLink(itemId, docLink);
     updateItemStatus(itemId, STATUS.SAVED);
 
-    Logger.log(`WebApp: saved item ${itemId} → ${docLink}`);
-    return buildConfirmationPage(`Saved! <a href="${encodeURI(docLink)}">View in Doc →</a>`);
+    const tagList = selectedTags.map(escapeHtml).join(', ');
+    const viewLink = docLink
+      ? ` <a href="${encodeURI(docLink)}">View in Doc →</a>`
+      : '';
+    Logger.log(`WebApp: saved item ${itemId} to tags [${tagList}] → ${docLink}`);
+    return buildConfirmationPage(`Saved to: ${tagList}.${viewLink}`);
   } catch (e) {
     Logger.log(`WebApp: error saving item ${itemId}: ${e.message}`);
     return buildConfirmationPage(`Something went wrong: ${escapeHtml(e.message)}`);

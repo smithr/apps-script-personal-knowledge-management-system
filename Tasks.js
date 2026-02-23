@@ -15,10 +15,16 @@ function runTasksPipeline() {
   Logger.log(`Tasks: ${newItems.length} new task(s) found`);
 
   newItems.forEach(item => {
-    let summary = summarizeItem(item);
-    addItemToInbox(item, summary);
-    addProcessedId(item.id);
-    completeTask(taskListId, item.rawMetadata.taskId)
+    try {
+      const summary = summarizeItem(item);
+      addItemToInbox(item, summary);
+      completeTask(taskListId, item.rawMetadata.taskId);
+    } catch (e) {
+      Logger.log(`Tasks: failed to process "${item.title}" — skipping. Error: ${e.message}`);
+    } finally {
+      // Always mark as processed to prevent infinite retries on persistent failures
+      addProcessedId(item.rawMetadata.taskId);
+    }
   });
 }
 

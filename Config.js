@@ -1,4 +1,4 @@
-const DEBUG = true; // Set to true to re-process all videos
+const DEBUG = false; // Set to true to re-process all items (bypasses deduplication)
 
 // ─── Script Property Keys ───────────────────────────────────────────────────
 const PROP = {

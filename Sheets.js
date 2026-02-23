@@ -127,6 +127,20 @@ function updateDocLink(itemId, docLink) {
 // ─── Config Tab ───────────────────────────────────────────────────────────────
 
 /**
+ * Returns all tag names that have a configured folder ID in the Config tab.
+ * Used by the WebApp to populate the tag selection page.
+ *
+ * @returns {string[]}
+ */
+function getConfiguredTags() {
+  const sheet = getSheet(TABS.CONFIG);
+  const data  = sheet.getDataRange().getValues();
+  return data
+    .filter(row => row[0] && row[1])
+    .map(row => String(row[0]).trim());
+}
+
+/**
  * Looks up the Drive folder ID for a given topic tag from the Config tab.
  * The Config tab is expected to have tag names in column 1, folder IDs in column 2.
  *
