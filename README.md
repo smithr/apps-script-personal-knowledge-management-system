@@ -29,6 +29,20 @@ flowchart TD
 
 **Phase 2 — Commit:** Clicking a link hits a deployed Apps Script web app. Save appends a formatted entry to the active quarterly Topic Doc in Drive; Dismiss updates the row status.
 
+## Screenshots
+
+**Digest email** — summarized items arrive with one-click Save and Dismiss actions:
+
+![Digest email](docs/images/digest-email.png)
+
+**Topic Doc** — approved items are appended as structured entries in a quarterly Google Doc:
+
+![Topic Doc entry](docs/images/topic-doc.png)
+
+**NotebookLM** — Topic Docs become notebook sources, making your knowledge queryable:
+
+![NotebookLM](docs/images/notebooklm.png)
+
 ## Architecture
 
 Single Google Apps Script project — no servers, no hosting, no external infrastructure. All execution happens on Google's servers via time-driven triggers.
