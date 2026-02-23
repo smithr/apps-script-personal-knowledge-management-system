@@ -83,11 +83,17 @@ Instructions:
  * @returns {Object} Summary with shortSummary, fullSummary, tags, keyPoints, actionItems
  * @throws {Error} On API failure or unparseable JSON response
  */
-// Delay between Gemini API calls to avoid rate limit errors (milliseconds)
-const GEMINI_RATE_LIMIT_DELAY_MS = 2000;
+// Delay between Gemini API calls per source type (milliseconds).
+// YouTube uses a longer delay because video processing is token-heavy and
+// consumes tokens-per-minute quota much faster than text-based sources.
+const GEMINI_RATE_LIMIT_DELAY_MS = {
+  [SOURCE.YOUTUBE]: 15000,
+  [SOURCE.GMAIL]:    2000,
+  [SOURCE.TASKS]:    2000,
+};
 
 function summarizeItem(item) {
-  Utilities.sleep(GEMINI_RATE_LIMIT_DELAY_MS);
+  Utilities.sleep(GEMINI_RATE_LIMIT_DELAY_MS[item.sourceType] || 2000);
 
   const model    = getProperty(PROP.GEMINI_MODEL);
   const apiKey   = getProperty(PROP.GEMINI_API_KEY);
@@ -141,7 +147,7 @@ function buildRequestParts(item, prompt) {
   }
   if (item.sourceType === SOURCE.TASKS) {
     return [
-      { text: `${prompt}}\n\nURL: ${item.url}` },
+      { text: `${prompt}\n\nURL: ${item.url}` },
     ];
   }
   return [

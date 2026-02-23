@@ -40,7 +40,7 @@ function saveItemToDoc(item, summary) {
     const docFile = getOrCreateTopicDoc(tag, folderId);
     const docLink = appendSectionToDoc(docFile.getId(), item, summary);
 
-    if (index === 0) primaryDocLink = docLink;
+    if (!primaryDocLink) primaryDocLink = docLink;
   });
 
   return primaryDocLink;
