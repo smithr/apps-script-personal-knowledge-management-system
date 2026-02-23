@@ -29,7 +29,7 @@ const FULL_SUMMARY_INSTRUCTIONS = `Task: Analyze this video and generate a highl
   1. No Introductions: Start immediately with the first point.
   2. Format: Concept Name (MM:SS): A dense, 3-4 sentence paragraph.
   3. Depth Requirement: Each paragraph must explain what the concept is, why the speaker recommends it, and how to implement it.
-  4. Use Bullets. Each paragraph should be in a separate bullet. 
+  4. Use plain-text bullet characters (•) only — no HTML, no markdown. Each paragraph should be in a separate bullet.
   5. External Links: Conclude with a single sentence noting any external resources (GitHub, docs) mentioned, with timestamps.
   Tone: Highly technical, objective, and information-dense.`
 
