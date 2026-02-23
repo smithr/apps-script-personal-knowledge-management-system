@@ -1,1 +1,30 @@
+# clasp project link — contains scriptId, do not commit
 .clasp.json
+
+# Claude local settings
+.claude/settings.local.json
+
+# Node / misc
+node_modules/
+
+
+# Phantom zero byte files that show up from time to time because of Claude bug
+.bashrc
+.bash_profile
+.zshrc
+.zprofile
+.profile
+.gitconfig
+.gitmodules
+.idea/
+.vscode/
+.mcp.json
+.ripgreprc
+
+# Git internals that sometimes surface as phantom files due to Claude bug
+HEAD
+config
+hooks/
+objects/
+refs/
+

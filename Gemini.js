@@ -97,7 +97,6 @@ function summarizeItem(item) {
 
   const model    = getProperty(PROP.GEMINI_MODEL);
   const apiKey   = getProperty(PROP.GEMINI_API_KEY);
-  // https://generativelanguage.googleapis.com/v1beta/models/${getProperty(PROP.GEMINI_MODEL)}:generateContent?key=${getProperty(PROP.GEMINI_API_KEY)}`;
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const prompt   = getPromptForSource(item.sourceType);
 
