@@ -175,7 +175,14 @@ function parseSummaryJson(rawText, item) {
   }
 
   try {
-    return JSON.parse(rawText.slice(start, end + 1));
+    const parsed = JSON.parse(rawText.slice(start, end + 1));
+
+    // Gemini occasionally returns string fields as arrays when the prompt mentions bullets.
+    // Normalize to strings so spreadsheet cells don't receive array objects.
+    if (Array.isArray(parsed.shortSummary)) parsed.shortSummary = parsed.shortSummary.join('\n');
+    if (Array.isArray(parsed.fullSummary))  parsed.fullSummary  = parsed.fullSummary.join('\n');
+
+    return parsed;
   } catch (e) {
     throw new Error(`Gemini returned unparseable JSON for item ${item.id}: ${e.message}`);
   }
