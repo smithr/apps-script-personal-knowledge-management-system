@@ -93,6 +93,7 @@ Gemini returns structured JSON for every item — no HTML output. The pipeline p
   "shortSummary": "2-3 sentence triage summary",
   "fullSummary":  "detailed summary with key concepts",
   "tags":         ["tag1", "tag2"],
+  "keyTerms":     ["TermName: one-sentence definition", "AnotherTerm: definition"],
   "keyPoints":    ["point 1", "point 2"],
   "actionItems":  ["action 1"]
 }
@@ -176,9 +177,9 @@ All secrets and user-specific values are stored as **Script Properties** — nev
 
 The bound spreadsheet needs three tabs:
 
-- **Inbox** — active triage queue (columns: Item ID, Date Added, Source Type, Title, URL, Summary, Tags, Status, Digest Sent, Doc Link)
+- **Inbox** — active triage queue (columns A–K: Item ID, Date Added, Source Type, Title, URL, Summary, Tags, Status, Digest Sent, Doc Link, Summary JSON)
 - **Archive** — same columns as Inbox; completed items move here over time
-- **Config** — two columns: tag name (col A) and Drive folder ID (col B). This maps Gemini's tags to the correct Topic Doc folder in Drive.
+- **Config** — three columns: tag name (col A), Drive folder ID (col B), and optional group name (col C). Tags that share the same folder ID and group name are written to a single consolidated Doc instead of separate per-tag Docs.
 
 ## Development Workflow
 

@@ -155,22 +155,29 @@ Calls the Gemini API with each new item and a source-specific prompt template. G
   "shortSummary": "2–3 sentence summary for triage",
   "fullSummary":  "Detailed summary with key points",
   "tags":         ["tag1", "tag2"],
+  "keyTerms":     ["TermName: one-sentence definition", "AnotherTerm: definition"],
   "keyPoints":    ["point 1", "point 2"],
   "actionItems":  ["action 1"]
 }
 ```
 
-The engine instructs Gemini to return only valid JSON with no preamble or markdown fences, making the response safe to parse directly with `JSON.parse()`.
+`keyTerms` contains 3–8 named concepts, tools, frameworks, or jargon from the source, each with a one-sentence definition using exact source terminology. This field is designed to improve NotebookLM query recall by ensuring precise terminology is preserved.
+
+The engine instructs Gemini to return only valid JSON with no preamble or markdown fences, making the response safe to parse directly with `JSON.parse()`. The full JSON object is stored in the Sheets Inbox (col K) so all fields are available at save time — no data is lost between ingest and Doc commit.
 
 ---
 
 ### 3.5 Prompt Template Library
 
-One prompt per source type, stored as constants in `Config.gs`. Each prompt specifies the desired output schema, the level of detail expected, and source-specific instructions:
+One prompt per source type, stored as constants in `Gemini.js`. Each prompt specifies the desired output schema, the level of detail expected, and source-specific instructions:
 
-- **YouTube:** focus on practical takeaways, key concepts, and whether the content is worth deeper engagement
+- **YouTube:** timestamps in concept headings (MM:SS format); focus on practical takeaways and whether the content is worth deeper engagement; video frames sampled at 0.1 fps to reduce token usage
 - **Gmail:** flag any action items, deadlines, or decisions required; identify sender intent
 - **Tasks:** treat the task title as a topic or URL to research and summarize; use the notes field for additional context
+
+All prompts share the same base `fullSummary` instructions: preserve exact source terminology, state conclusions as direct claims rather than attributed opinions, include specific numbers and tool names, and produce dense concept-per-paragraph formatting. The YouTube prompt uses a variant that adds timestamp format to concept headings.
+
+All prompts include a `keyTerms` instruction: extract 3–8 named concepts, tools, or frameworks with one-sentence definitions using exact source terminology.
 
 Prompts are versioned in code comments so changes can be tracked over time.
 
@@ -184,20 +191,27 @@ The master metadata database. One Google Sheet with three tabs:
 
 | Column | Description |
 |---|---|
-| Item ID | UUID generated at ingest time |
-| Date Added | ISO timestamp |
-| Source Type | YouTube / Gmail / Tasks |
-| Title | Content title or subject |
-| Original URL | Link to source |
-| Short Summary | 2–3 sentence Gemini output |
-| Tags | Comma-separated topic tags |
-| Status | Pending / Saved / Dismissed |
-| Digest Sent | Boolean — has this been included in a digest |
-| Doc Link | Deep link to section in aggregate Topic Doc (populated post-approval) |
+| A — Item ID | UUID generated at ingest time |
+| B — Date Added | ISO timestamp |
+| C — Source Type | YouTube / Gmail / Tasks |
+| D — Title | Content title or subject |
+| E — Original URL | Link to source |
+| F — Summary | Full summary text (human-readable) |
+| G — Tags | Comma-separated topic tags |
+| H — Status | Pending / Saved / Dismissed |
+| I — Digest Sent | Boolean — has this been included in a digest |
+| J — Doc Link | Deep link to section in aggregate Topic Doc (populated post-approval) |
+| K — Summary JSON | Raw Gemini JSON blob (all fields including keyTerms, keyPoints, actionItems) — used internally at save time |
 
 **Archive Tab** — same columns as Inbox; Saved and Dismissed items move here periodically to keep the Inbox tab performant.
 
-**Config Tab** — maps topic tag names to their corresponding Drive folder IDs, used by the Docs Writer to route approved items to the correct Topic Doc.
+**Config Tab** — maps topic tags to Drive folders and optional group names.
+
+| Column | Description |
+|---|---|
+| A — Tag | Topic tag name (must match Gemini output exactly, case-insensitive) |
+| B — Folder ID | Drive folder ID where Topic Docs for this tag are stored |
+| C — Group | Optional. When set, tags sharing the same folder ID and group name write to a single consolidated Doc instead of separate per-tag Docs (e.g. "leadership" and "management" both pointing to the same folder with group "leadership-management") |
 
 ---
 
@@ -211,10 +225,13 @@ Manages aggregate Topic Docs in Google Drive. On approval it:
 4. Appends a formatted section with a consistent structure:
    - Metadata header: date, source type, original URL
    - Full summary
-   - Key points
-   - Action items (if any)
+   - Key Terms (named concepts with definitions — omitted if empty)
+   - Key Points (omitted if empty)
+   - Action Items (omitted if empty)
 5. Returns a deep link anchor to the appended section
 6. Updates the Sheets row with the Doc link and changes status to `Saved`
+
+**Tag Grouping:** Tags that share the same Drive folder ID and group name (configured in the Config tab, col C) are written to the same Doc. This allows related tags like "leadership" and "management" to consolidate into a single "leadership-management" Doc rather than creating two separate Docs. When an item has multiple tags that resolve to the same group, the entry is written once.
 
 **Doc Rotation:** When a Topic Doc reaches approximately 50 items or end of quarter, a new Doc is created automatically. The old Doc remains in Drive and stays available as a NotebookLM source.
 

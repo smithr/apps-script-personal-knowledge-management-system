@@ -142,20 +142,27 @@ function getConfiguredTags() {
 }
 
 /**
- * Looks up the Drive folder ID for a given topic tag from the Config tab.
- * The Config tab is expected to have tag names in column 1, folder IDs in column 2.
+ * Returns the folder ID and group name for a given tag from the Config tab.
+ * The Config tab is expected to have tag names in column A, folder IDs in column B,
+ * and an optional group name in column C. When the group column is blank, the tag
+ * name itself is used as the group (i.e. the tag gets its own doc).
+ *
+ * Tags that share the same folder ID and group name will be written to the same doc.
  *
  * @param {string} tag
- * @returns {string|null} Drive folder ID or null if not configured
+ * @returns {{ folderId: string, group: string }|null} null if tag is not configured
  */
-function getFolderIdForTag(tag) {
+function getTagConfig(tag) {
   const sheet = getSheet(TABS.CONFIG);
   const data  = sheet.getDataRange().getValues();
   const normalizedTag = tag.trim().toLowerCase();
 
   for (let i = 0; i < data.length; i++) {
     if (String(data[i][0]).trim().toLowerCase() === normalizedTag) {
-      return data[i][1] || null;
+      const folderId = data[i][1] ? String(data[i][1]).trim() : null;
+      if (!folderId) return null;
+      const group = String(data[i][2] || '').trim() || tag.trim();
+      return { folderId, group };
     }
   }
 

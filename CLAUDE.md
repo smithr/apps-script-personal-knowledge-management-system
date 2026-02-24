@@ -30,13 +30,13 @@ Multi-file Apps Script project. Each file has a single responsibility:
 | File | Responsibility |
 |---|---|
 | `Code.js` | Trigger entry points (`runFrequentPipeline`, `runDailyPipeline`, `sendDigest`) |
-| `Config.js` | Constants (PROP, TABS, COL, STATUS, SOURCE), Script Property accessors, deduplication store |
+| `Config.js` | Constants (PROP, TABS, COL, STATUS, SOURCE), Script Property accessors, deduplication store. `COL.SUMMARY_JSON` (col 11) stores the full Gemini JSON blob. |
 | `Utils.js` | `generateId`, `getCurrentTimestamp`, `escapeHtml`, `stripHtml`, `normalizeItem` |
 | `YouTube.js` | YouTube playlist connector (`runYouTubePipeline`, `fetchPlaylistVideos`) |
 | `Gmail.js` | Gmail label connector (`runGmailPipeline`, `fetchLabeledMessages`) |
 | `Tasks.js` | Google Tasks connector (`runTasksPipeline`, `fetchPendingTasks`, `completeTask`) |
 | `Gemini.js` | Summarization engine; prompt templates per source type; rate-limit delays |
-| `Sheets.js` | All Sheets read/write: Inbox tab, Config tab (tag→folder mappings) |
+| `Sheets.js` | All Sheets read/write: Inbox tab, Config tab (tag→folder→group mappings). `getTagConfig(tag)` returns `{ folderId, group }` — tags sharing a folder ID and group name write to one consolidated Doc. |
 | `Docs.js` | Topic Doc creation, quarterly rotation, entry append |
 | `Digest.js` | HTML digest email composition and delivery |
 | `WebApp.js` | `doGet` approval endpoint: tag selection page + save/dismiss handlers |

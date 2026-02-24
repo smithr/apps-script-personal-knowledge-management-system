@@ -27,15 +27,24 @@
 function saveItemToDoc(item, summary, selectedTags) {
   const tags = (selectedTags || summary.tags || []).filter(tag => tag);
   let primaryDocLink = '';
+  const writtenGroups = new Set(); // deduplicate tags that share a group
 
-  tags.forEach((tag, index) => {
-    const folderId = getFolderIdForTag(tag);
-    if (!folderId) {
+  tags.forEach(tag => {
+    const config = getTagConfig(tag);
+    if (!config) {
       Logger.log(`Docs: no folder configured for tag "${tag}" — skipping`);
       return;
     }
 
-    const docFile = getOrCreateTopicDoc(tag, folderId);
+    const { folderId, group } = config;
+    const dedupeKey = `${folderId}::${group}`;
+    if (writtenGroups.has(dedupeKey)) {
+      Logger.log(`Docs: tag "${tag}" shares group "${group}" — skipping duplicate write`);
+      return;
+    }
+    writtenGroups.add(dedupeKey);
+
+    const docFile = getOrCreateTopicDoc(group, folderId);
     const docLink = appendSectionToDoc(docFile.getId(), item, summary);
 
     if (!primaryDocLink) primaryDocLink = docLink;
@@ -54,23 +63,23 @@ function saveItemToDoc(item, summary, selectedTags) {
  * @param {string} folderId - Drive folder ID for this topic
  * @returns {GoogleAppsScript.Drive.File}
  */
-function getOrCreateTopicDoc(tag, folderId) {
+function getOrCreateTopicDoc(docName, folderId) {
   const quarter = getCurrentQuarterLabel();
   const folder  = DriveApp.getFolderById(folderId);
 
   // Walk rotation slots (1 = base name, 2+ = suffixed) until we find one
   // that either doesn't exist yet (create it) or still has capacity.
   for (let rotation = 1; ; rotation++) {
-    const docName  = rotation === 1
-      ? `${tag} - ${quarter}`
-      : `${tag} - ${quarter}-${rotation}`;
-    const existing = folder.getFilesByName(docName);
+    const name  = rotation === 1
+      ? `${docName} - ${quarter}`
+      : `${docName} - ${quarter}-${rotation}`;
+    const existing = folder.getFilesByName(name);
 
     if (!existing.hasNext()) {
-      const newDoc  = DocumentApp.create(docName);
+      const newDoc  = DocumentApp.create(name);
       const newFile = DriveApp.getFileById(newDoc.getId());
       newFile.moveTo(folder);
-      Logger.log(`Docs: created new doc "${docName}"`);
+      Logger.log(`Docs: created new doc "${name}"`);
       return newFile;
     }
 
@@ -79,7 +88,7 @@ function getOrCreateTopicDoc(tag, folderId) {
       return docFile;
     }
 
-    Logger.log(`Docs: "${docName}" is full — checking next rotation`);
+    Logger.log(`Docs: "${name}" is full — checking next rotation`);
   }
 }
 
