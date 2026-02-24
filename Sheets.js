@@ -19,16 +19,17 @@ function addItemToInbox(item, summary) {
   const sheet = getSheet(TABS.INBOX);
   const row   = new Array(Object.keys(COL).length);
 
-  row[COL.ITEM_ID     - 1] = item.id;
-  row[COL.DATE_ADDED  - 1] = item.dateAdded;
-  row[COL.SOURCE_TYPE - 1] = item.sourceType;
-  row[COL.TITLE       - 1] = item.title;
-  row[COL.URL         - 1] = item.url;
-  row[COL.SUMMARY     - 1] = summary.fullSummary;
-  row[COL.TAGS        - 1] = (summary.tags || []).join(', ');
-  row[COL.STATUS      - 1] = STATUS.PENDING;
-  row[COL.DIGEST_SENT - 1] = false;
-  row[COL.DOC_LINK    - 1] = '';
+  row[COL.ITEM_ID      - 1] = item.id;
+  row[COL.DATE_ADDED   - 1] = item.dateAdded;
+  row[COL.SOURCE_TYPE  - 1] = item.sourceType;
+  row[COL.TITLE        - 1] = item.title;
+  row[COL.URL          - 1] = item.url;
+  row[COL.SUMMARY      - 1] = summary.fullSummary;
+  row[COL.TAGS         - 1] = (summary.tags || []).join(', ');
+  row[COL.STATUS       - 1] = STATUS.PENDING;
+  row[COL.DIGEST_SENT  - 1] = false;
+  row[COL.DOC_LINK     - 1] = '';
+  row[COL.SUMMARY_JSON - 1] = JSON.stringify(summary);
 
   sheet.appendRow(row);
 }
@@ -173,15 +174,16 @@ function getFolderIdForTag(tag) {
 function rowToObject(row, rowIndex) {
   return {
     rowIndex,
-    itemId:     row[COL.ITEM_ID     - 1],
-    dateAdded:  row[COL.DATE_ADDED  - 1],
-    sourceType: row[COL.SOURCE_TYPE - 1],
-    title:      row[COL.TITLE       - 1],
-    url:        row[COL.URL         - 1],
-    summary:    row[COL.SUMMARY     - 1],
-    tags:       row[COL.TAGS        - 1],
-    status:     row[COL.STATUS      - 1],
-    digestSent: row[COL.DIGEST_SENT - 1],
-    docLink:    row[COL.DOC_LINK    - 1],
+    itemId:      row[COL.ITEM_ID      - 1],
+    dateAdded:   row[COL.DATE_ADDED   - 1],
+    sourceType:  row[COL.SOURCE_TYPE  - 1],
+    title:       row[COL.TITLE        - 1],
+    url:         row[COL.URL          - 1],
+    summary:     row[COL.SUMMARY      - 1],
+    tags:        row[COL.TAGS         - 1],
+    status:      row[COL.STATUS       - 1],
+    digestSent:  row[COL.DIGEST_SENT  - 1],
+    docLink:     row[COL.DOC_LINK     - 1],
+    summaryJson: row[COL.SUMMARY_JSON - 1],
   };
 }

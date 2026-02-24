@@ -33,6 +33,7 @@ const COL = {
   STATUS:       8,
   DIGEST_SENT:  9,
   DOC_LINK:     10,
+  SUMMARY_JSON: 11,  // full Gemini JSON blob for downstream use
 };
 
 // ─── Status Values ────────────────────────────────────────────────────────────

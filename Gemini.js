@@ -7,31 +7,62 @@
  *   shortSummary: string    — 2-3 sentence summary for triage
  *   fullSummary:  string    — detailed summary with key points
  *   tags:         string[]  — 2-5 lowercase topic tags
+ *   keyTerms:     string[]  — 3-8 named concepts with one-sentence definitions
  *   keyPoints:    string[]  — 3-7 most important points
  *   actionItems:  string[]  — concrete next actions (empty array if none)
  */
 
 // ─── Prompt Templates ────────────────────────────────────────────────────────
-// Version: 1.0
+// Version: 2.0
 // Each prompt instructs Gemini to return ONLY valid JSON — no preamble, no markdown.
 
 const OUTPUT_SCHEMA = `{
   "shortSummary": "2-3 sentence summary for triage",
   "fullSummary":  "detailed summary with key points",
   "tags":         ["tag1", "tag2"],
+  "keyTerms":     ["TermName: one-sentence definition", "AnotherTerm: definition"],
   "keyPoints":    ["point 1", "point 2"],
   "actionItems":  ["action 1"]
 }`;
 
-const FULL_SUMMARY_INSTRUCTIONS = `Task: Analyze this video and generate a highly detailed, dense summary of the core concepts.
-  Instruction: Act as an expert note-taker. Do not just list the topics. For every concept, extract the specific reasoning, the "how-to" mechanics, and the ultimate value to the user. Write as if you are transcribing the most important points word-for-word.
+// Base instructions used for Gmail and Tasks sources.
+const FULL_SUMMARY_INSTRUCTIONS = `Task: Generate a highly detailed, dense summary of the core concepts from this content.
+  Instruction: Act as an expert note-taker. Do not just list the topics. For every concept,
+  extract the specific reasoning, the "how-to" mechanics, and the ultimate value to the reader.
+  Preserve the exact terminology, acronyms, tool names, framework names, and proper nouns
+  from the source — do not substitute synonyms for technical terms.
   Formatting Rules:
   1. No Introductions: Start immediately with the first point.
-  2. Format: Concept Name (MM:SS): A dense, 3-4 sentence paragraph.
-  3. Depth Requirement: Each paragraph must explain what the concept is, why the speaker recommends it, and how to implement it.
-  4. Use plain-text bullet characters (•) only — no HTML, no markdown. Each paragraph should be in a separate bullet.
-  5. External Links: Conclude with a single sentence noting any external resources (GitHub, docs) mentioned, with timestamps.
-  Tone: Highly technical, objective, and information-dense.`
+  2. Format: Concept Name: A dense, 3-5 sentence paragraph.
+  3. Depth Requirement: Each paragraph must explain what the concept is, why it matters,
+     and how to implement it. State conclusions as direct claims ("X is better than Y because Z"),
+     not as attributed opinions ("the author thinks X is better").
+  4. Use plain-text bullet characters (•) only — no HTML, no markdown.
+  5. Specificity: Include specific examples, tool versions, statistics, benchmarks, and numbers
+     mentioned. A reader should be able to answer "what specific tools were recommended?" and
+     "what numbers were cited?" from this summary alone.
+  6. External Links: Conclude with a single sentence noting any external resources mentioned.
+  Tone: Highly technical, objective, and information-dense.`;
+
+// YouTube variant — identical to base but rule 2 includes timestamps and rule 6 adds timestamps.
+const FULL_SUMMARY_INSTRUCTIONS_YOUTUBE = `Task: Generate a highly detailed, dense summary of the core concepts from this video.
+  Instruction: Act as an expert note-taker. Do not just list the topics. For every concept,
+  extract the specific reasoning, the "how-to" mechanics, and the ultimate value to the viewer.
+  Preserve the exact terminology, acronyms, tool names, framework names, and proper nouns
+  from the source — do not substitute synonyms for technical terms.
+  Formatting Rules:
+  1. No Introductions: Start immediately with the first point.
+  2. Format: Concept Name (MM:SS): A dense, 3-5 sentence paragraph.
+  3. Depth Requirement: Each paragraph must explain what the concept is, why it matters,
+     and how to implement it. State conclusions as direct claims ("X is better than Y because Z"),
+     not as attributed opinions ("the speaker thinks X is better").
+  4. Use plain-text bullet characters (•) only — no HTML, no markdown.
+  5. Specificity: Include specific examples, tool versions, statistics, benchmarks, and numbers
+     mentioned. A reader should be able to answer "what specific tools were recommended?" and
+     "what numbers were cited?" from this summary alone.
+  6. External Links: Conclude with a single sentence noting any external resources (GitHub, docs)
+     mentioned, with timestamps (MM:SS).
+  Tone: Highly technical, objective, and information-dense.`;
 
 const PROMPT_YOUTUBE = `You are an expert note-taker analyzing a YouTube video.
 Return ONLY a valid JSON object matching this schema — no preamble, no markdown fences:
@@ -40,9 +71,10 @@ ${OUTPUT_SCHEMA}
 Instructions:
 - shortSummary: 2-3 sentences on the core topic and whether it is worth deeper engagement
 - fullSummary:
-  ${FULL_SUMMARY_INSTRUCTIONS}
-  Tone: Highly technical, objective, and information-dense.
+  ${FULL_SUMMARY_INSTRUCTIONS_YOUTUBE}
 - tags: 2-5 lowercase topic tags (e.g. "productivity", "ai", "leadership")
+- keyTerms: extract 3-8 important named concepts, tools, frameworks, or jargon from the video,
+  each with a one-sentence definition using exact source terminology
 - keyPoints: the 3-7 most important specific points or recommendations from the video
 - actionItems: concrete next actions the viewer could take (empty array if none)`;
 
@@ -52,9 +84,11 @@ ${OUTPUT_SCHEMA}
 
 Instructions:
 - shortSummary: 2-3 sentences covering what the email is about and what (if anything) is required
-- fullSummary: 
+- fullSummary:
   ${FULL_SUMMARY_INSTRUCTIONS}
 - tags: 2-5 lowercase topic tags
+- keyTerms: extract 3-8 important named concepts, tools, frameworks, or jargon from the email,
+  each with a one-sentence definition using exact source terminology
 - keyPoints: key facts, decisions, or information from the email
 - actionItems: any explicit or implied action items, deadlines, or decisions required`;
 
@@ -66,9 +100,11 @@ Instructions:
 - The task title is the topic or URL to research/summarize
 - The notes field provides additional context
 - shortSummary: 2-3 sentences on what this topic is and why it might be worth exploring
-- fullSummary: 
+- fullSummary:
   ${FULL_SUMMARY_INSTRUCTIONS}
 - tags: 2-5 lowercase topic tags
+- keyTerms: extract 3-8 important named concepts, tools, frameworks, or jargon from the topic,
+  each with a one-sentence definition using exact source terminology
 - keyPoints: key facts or concepts about this topic
 - actionItems: concrete next steps if any are implied`;
 
@@ -80,7 +116,7 @@ Instructions:
  * Callers are responsible for catching and deciding whether to retry.
  *
  * @param {Object} item - Normalized item from a source connector
- * @returns {Object} Summary with shortSummary, fullSummary, tags, keyPoints, actionItems
+ * @returns {Object} Summary with shortSummary, fullSummary, tags, keyTerms, keyPoints, actionItems
  * @throws {Error} On API failure or unparseable JSON response
  */
 // Delay between Gemini API calls per source type (milliseconds).
@@ -125,6 +161,11 @@ function summarizeItem(item) {
     throw new Error(`Gemini API error: ${response.getContentText()}`);
   }
 
+  const usage = jsonResponse.usageMetadata;
+  if (usage) {
+    Logger.log(`Gemini [${item.sourceType}] tokens — prompt: ${usage.promptTokenCount}, output: ${usage.candidatesTokenCount}, total: ${usage.totalTokenCount}`);
+  }
+
   const rawText = jsonResponse.candidates[0].content.parts[0].text || '';
   return parseSummaryJson(rawText, item);
 }
@@ -141,7 +182,7 @@ function buildRequestParts(item, prompt) {
   if (item.sourceType === SOURCE.YOUTUBE) {
     return [
       { text: prompt },
-      { file_data: { file_uri: item.content } },
+      { file_data: { file_uri: item.content }, video_metadata: { fps: 0.1 } },
     ];
   }
   if (item.sourceType === SOURCE.TASKS) {
@@ -180,6 +221,7 @@ function parseSummaryJson(rawText, item) {
     // Normalize to strings so spreadsheet cells don't receive array objects.
     if (Array.isArray(parsed.shortSummary)) parsed.shortSummary = parsed.shortSummary.join('\n');
     if (Array.isArray(parsed.fullSummary))  parsed.fullSummary  = parsed.fullSummary.join('\n');
+    if (!Array.isArray(parsed.keyTerms))    parsed.keyTerms     = [];
 
     return parsed;
   } catch (e) {

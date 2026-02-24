@@ -169,13 +169,26 @@ function handleSaveConfirm(itemId, item, selectedTags) {
   }
 
   try {
-    const summary = {
-      shortSummary: item.summary,
-      fullSummary:  item.summary,
-      tags:         selectedTags,
-      keyPoints:    [],
-      actionItems:  [],
-    };
+    let summary;
+    try {
+      summary = item.summaryJson ? JSON.parse(item.summaryJson) : null;
+    } catch (_) {
+      summary = null;
+    }
+
+    if (!summary) {
+      // Fallback for rows written before the SUMMARY_JSON column existed.
+      summary = {
+        shortSummary: item.summary,
+        fullSummary:  item.summary,
+        tags:         selectedTags,
+        keyTerms:     [],
+        keyPoints:    [],
+        actionItems:  [],
+      };
+    } else {
+      summary.tags = selectedTags; // use the user's confirmed tag selection
+    }
 
     const docLink = saveItemToDoc(item, summary, selectedTags);
     updateDocLink(itemId, docLink);

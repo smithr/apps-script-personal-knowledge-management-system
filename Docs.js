@@ -111,8 +111,9 @@ function countEntriesInDoc(docId) {
  *   [Title] — heading
  *   Source type | Date | Original URL
  *   Full summary paragraph
- *   Key points list
- *   Action items list (omitted if empty)
+ *   Key Terms list (omitted if empty)
+ *   Key Points list (omitted if empty)
+ *   Action Items list (omitted if empty)
  *
  * @param {string} docId   - Google Doc file ID
  * @param {Object} item    - Normalized item
@@ -135,6 +136,14 @@ function appendSectionToDoc(docId, item, summary) {
 
   // Full summary
   body.appendParagraph(summary.fullSummary || '');
+
+  // Key terms
+  if (summary.keyTerms && summary.keyTerms.length > 0) {
+    body.appendParagraph('Key Terms').setHeading(DocumentApp.ParagraphHeading.HEADING3);
+    summary.keyTerms.forEach(term => {
+      body.appendListItem(term).setGlyphType(DocumentApp.GlyphType.BULLET);
+    });
+  }
 
   // Key points
   if (summary.keyPoints && summary.keyPoints.length > 0) {
