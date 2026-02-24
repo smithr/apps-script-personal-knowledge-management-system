@@ -66,8 +66,8 @@ Single Google Apps Script project — no servers, no hosting, no external infras
 | Trigger Function | Frequency | Purpose |
 |---|---|---|
 | `runFrequentPipeline` | Every 15–30 min | Gmail + Tasks connectors |
-| `runDailyPipeline` | Once daily | YouTube connector |
-| `sendDigest` | Multiple times/day | Digest email delivery |
+| `runHourlyPipeline` | Every hour | YouTube connector |
+| `sendDigest` | Every hour | Digest email delivery |
 
 ### Drive Folder Structure
 
@@ -77,9 +77,6 @@ Single Google Apps Script project — no servers, no hosting, no external infras
     /[topic-name]
       [topic-name] - 2026-Q1.gdoc
       [topic-name] - 2026-Q2.gdoc
-  /Projects
-    /[project-name]
-      [project-name] - Notes.gdoc
 ```
 
 Topic Docs rotate quarterly (or at ~50 items). Each Doc is a source in a corresponding NotebookLM notebook.
@@ -131,25 +128,7 @@ After cloning or creating, a `.clasp.json` is generated linking this directory t
 
 ### Apps Script Manifest
 
-Your `appsscript.json` should declare the required OAuth scopes:
-
-```json
-{
-  "timeZone": "America/Chicago",
-  "dependencies": {},
-  "exceptionLogging": "STACKDRIVER",
-  "runtimeVersion": "V8",
-  "oauthScopes": [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/documents",
-    "https://www.googleapis.com/auth/tasks",
-    "https://www.googleapis.com/auth/script.external_request"
-  ]
-}
-```
+Your `appsscript.json` should declare the required dependencies, see [appsscript.json](appsscript.json)
 
 ### Advanced Services
 
