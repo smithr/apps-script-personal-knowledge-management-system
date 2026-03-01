@@ -36,18 +36,20 @@ Multi-file Apps Script project. Each file has a single responsibility:
 | `Gmail.js` | Gmail label connector (`runGmailPipeline`, `fetchLabeledMessages`) |
 | `Tasks.js` | Google Tasks connector (`runTasksPipeline`, `fetchPendingTasks`, `completeTask`) |
 | `Gemini.js` | Summarization engine; prompt templates per source type; rate-limit delays |
-| `Sheets.js` | All Sheets read/write: Inbox tab, Config tab (tag→folder→group mappings). `getTagConfig(tag)` returns `{ folderId, group }` — tags sharing a folder ID and group name write to one consolidated Doc. |
+| `Sheets.js` | All Sheets read/write: Inbox tab, Config tab (tag→folder→group mappings). `getTagConfig(tag)` returns `{ folderId, group }` — tags sharing a folder ID and group name write to one consolidated Doc. `archiveProcessedItems()` moves Saved/Dismissed rows from Inbox to Archive tab. `getAllPendingItems()` returns all Pending rows regardless of DigestSent (used by weekly digest). |
 | `Docs.js` | Topic Doc creation, quarterly rotation, entry append |
-| `Digest.js` | HTML digest email composition and delivery |
+| `Digest.js` | `sendDigest`: frequent HTML digest with full summaries (new items only). `sendWeeklyDigest`: compact weekly recap of all pending items, no summaries, does not update DigestSent flag. |
 | `WebApp.js` | `doGet` approval endpoint: tag selection page + save/dismiss handlers |
 
 ### Pipeline Flow
 
 1. `runFrequentPipeline` (every 15 min) → Gmail + Tasks connectors
-2. `runDailyPipeline` (once daily) → YouTube connector
+2. `runHourlyPipeline` (every hour) → YouTube connector
 3. Each connector: fetch → deduplicate → Gemini summarize → write to Sheets Inbox
-4. `sendDigest` (every few hours) → email pending Inbox items with Save/Dismiss links
-5. User clicks link → WebApp shows tag selection → confirmed save appends to Topic Doc in Drive
+4. `sendDigest` (every few hours) → email new unseen items with full summaries + Save/Dismiss links
+5. `sendWeeklyDigest` (weekly) → compact list of all still-pending items, no summaries, does not update DigestSent
+6. User clicks link → WebApp shows tag selection → confirmed save appends to Topic Doc in Drive
+7. `archiveProcessedItems` (weekly or manual) → moves Saved/Dismissed rows from Inbox to Archive tab
 
 ### Deduplication
 

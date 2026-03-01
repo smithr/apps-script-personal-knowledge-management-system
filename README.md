@@ -56,9 +56,9 @@ Single Google Apps Script project — no servers, no hosting, no external infras
 | `Gmail.js` | Gmail label connector |
 | `Tasks.js` | Google Tasks connector |
 | `Gemini.js` | Summarization engine and prompt templates |
-| `Sheets.js` | Sheets read/write (Inbox, Archive, Config tabs) |
+| `Sheets.js` | Sheets read/write (Inbox, Archive, Config tabs); `archiveProcessedItems` moves Saved/Dismissed rows to Archive |
 | `Docs.js` | Topic Doc creation and append logic |
-| `Digest.js` | Digest email composition and delivery (`sendDigest` trigger) |
+| `Digest.js` | Frequent digest (`sendDigest`) with full summaries; weekly recap (`sendWeeklyDigest`) compact list |
 | `WebApp.js` | `doGet` approval endpoint |
 
 ### Trigger Schedule
@@ -67,7 +67,9 @@ Single Google Apps Script project — no servers, no hosting, no external infras
 |---|---|---|
 | `runFrequentPipeline` | Every 15–30 min | Gmail + Tasks connectors |
 | `runHourlyPipeline` | Every hour | YouTube connector |
-| `sendDigest` | Every hour | Digest email delivery |
+| `sendDigest` | Every hour | Digest email with full summaries (new items only) |
+| `sendWeeklyDigest` | Once weekly | Compact recap of all still-pending items, no summaries |
+| `archiveProcessedItems` | Weekly or manual | Move Saved/Dismissed rows from Inbox to Archive tab |
 
 ### Drive Folder Structure
 
@@ -194,8 +196,10 @@ Set up time-driven triggers in the Apps Script editor (**Triggers** clock icon):
 | Function | Suggested schedule |
 |---|---|
 | `runFrequentPipeline` | Every 15 minutes |
-| `runDailyPipeline` | Once daily (e.g. 6–7 AM) |
+| `runHourlyPipeline` | Every hour |
 | `sendDigest` | Every 2–4 hours |
+| `sendWeeklyDigest` | Once weekly (e.g. Monday 8 AM) |
+| `archiveProcessedItems` | Once weekly (e.g. Sunday night) or run manually |
 
 ### Debugging
 

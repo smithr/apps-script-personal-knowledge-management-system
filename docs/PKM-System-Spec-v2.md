@@ -130,8 +130,10 @@ Two time-based Apps Script triggers manage the polling cadence:
 | Trigger | Frequency | Runs |
 |---|---|---|
 | `runFrequentPipeline` | Every 15–30 min | Gmail, Tasks connectors |
-| `runDailyPipeline` | Once daily | YouTube connector |
-| `sendDigest` | Multiple times/day (configurable) | Digest email delivery |
+| `runHourlyPipeline` | Every hour | YouTube connector |
+| `sendDigest` | Multiple times/day | Frequent digest — new unseen items with full summaries |
+| `sendWeeklyDigest` | Once weekly | Compact recap of all still-pending items, no summaries |
+| `archiveProcessedItems` | Weekly or manual | Moves Saved/Dismissed rows from Inbox to Archive tab |
 
 All triggers are managed within the Apps Script project's trigger dashboard. No external scheduler or cron is required.
 
@@ -254,18 +256,20 @@ Manages aggregate Topic Docs in Google Drive. On approval it:
 
 ### 3.8 Digest Delivery
 
-Runs on a configurable schedule multiple times per day. Queries the Sheets Inbox for all rows where `Status = Pending` and `Digest Sent = false`, composes a formatted HTML email, and sends it to the configured digest address.
+Two complementary digest functions handle different review cadences.
 
-**Email Structure**
-
-Each item in the digest is rendered as a card containing:
+**Frequent Digest (`sendDigest`)** — runs multiple times per day. Queries the Inbox for rows where `Status = Pending` and `Digest Sent = false`. Each item is rendered as a full card:
 - Source type badge and date
 - Title (linked to original URL)
-- Short summary
+- Full summary
 - Suggested tags
-- **[Save to PKM]** and **[Dismiss]** action links pointing to the web app endpoint
+- **[Save to PKM]** and **[Dismiss]** action links
 
-After sending, all included items have their `Digest Sent` flag set to `true` so they are not duplicated in the next digest run.
+After sending, all included items have their `Digest Sent` flag set to `true` so they are not repeated in subsequent runs.
+
+**Weekly Recap (`sendWeeklyDigest`)** — runs once per week. Queries the Inbox for all rows where `Status = Pending`, regardless of `Digest Sent`. Sends a compact table — no summaries, just source badge, linked title, date, and Save/Dismiss links. Does not update the `Digest Sent` flag. Useful as a catch-all reminder for items that were seen in the frequent digest but not yet actioned.
+
+**Inbox Archiving (`archiveProcessedItems`)** — not an email function but complements the digest workflow. Moves all Saved and Dismissed rows from the Inbox tab to the Archive tab, keeping the Inbox lean. Safe to run repeatedly; only rows with a terminal status are moved. Recommended schedule: weekly, before the weekly recap runs so the recap reflects only genuinely unactioned items.
 
 ---
 
