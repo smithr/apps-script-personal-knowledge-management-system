@@ -2,8 +2,8 @@
  * Digest.js
  * Digest email composition and delivery.
  *
- * sendDigest() is the trigger function — set up a time-based trigger in the
- * Apps Script editor to call it multiple times per day.
+ * sendDigest()       — frequent trigger (multiple times/day); sends new unseen items with full summaries
+ * sendWeeklyDigest() — weekly trigger; sends a compact list of all still-pending items, no summaries
  */
 
 /**
@@ -32,6 +32,122 @@ function sendDigest() {
   markItemsDigestSent(sentIds);
 
   Logger.log(`Digest: sent and marked ${sentIds.length} item(s) as digest-sent`);
+}
+
+/**
+ * Weekly trigger function.
+ * Sends a compact list of all currently pending Inbox items — no summaries,
+ * just title, source, date, and Save/Dismiss links.
+ * Does not update the DigestSent flag (this is a recap, not the primary digest).
+ * Exits silently if there are no pending items.
+ */
+function sendWeeklyDigest() {
+  const items = getAllPendingItems();
+
+  if (items.length === 0) {
+    Logger.log('Weekly digest: no pending items — skipping');
+    return;
+  }
+
+  Logger.log(`Weekly digest: sending recap of ${items.length} pending item(s)`);
+
+  const recipient = getProperty(PROP.DIGEST_EMAIL);
+  const subject   = `PKM Weekly Recap — ${items.length} pending item${items.length > 1 ? 's' : ''}`;
+  const htmlBody  = buildWeeklyDigestEmail(items);
+
+  MailApp.sendEmail({ to: recipient, subject, htmlBody });
+  Logger.log('Weekly digest: sent');
+}
+
+/**
+ * Composes the compact weekly digest email from all pending items.
+ *
+ * @param {Object[]} items - Row objects from Sheets.js getAllPendingItems()
+ * @returns {string} Complete HTML email body
+ */
+function buildWeeklyDigestEmail(items) {
+  const rows = items.map(buildWeeklyItemRow).join('\n');
+
+  return `
+    <div style="font-family: sans-serif; max-width: 640px; margin: 0 auto; color: #222;">
+      <h1 style="font-size: 20px; border-bottom: 2px solid #eee; padding-bottom: 8px;">
+        PKM Weekly Recap — ${items.length} pending item${items.length > 1 ? 's' : ''}
+      </h1>
+      <table style="width: 100%; border-collapse: collapse;">
+        ${rows}
+      </table>
+      <p style="color: #999; font-size: 12px; margin-top: 32px;">
+        These items are still pending in your PKM inbox.
+      </p>
+    </div>
+  `;
+}
+
+/**
+ * Builds a compact table row for a single weekly digest item.
+ * Includes source badge, linked title, date, and Save/Dismiss links.
+ * No summary text is included.
+ *
+ * @param {Object} item - Row object from Sheets.js
+ * @returns {string} HTML <tr> fragment
+ */
+function buildWeeklyItemRow(item) {
+  const webAppUrl  = getProperty(PROP.WEBAPP_URL);
+  const saveUrl    = `${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=save`;
+  const dismissUrl = `${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=dismiss`;
+
+  const title      = escapeHtml(item.title);
+  const sourceType = escapeHtml(item.sourceType);
+  const date       = new Date(item.dateAdded).toLocaleDateString();
+  const itemUrl    = encodeURI(item.url);
+
+  const sourceBadgeColor = {
+    [SOURCE.YOUTUBE]: '#FF0000',
+    [SOURCE.GMAIL]:   '#EA4335',
+    [SOURCE.TASKS]:   '#1A73E8',
+  }[item.sourceType] || '#888';
+
+  return `
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 10px 8px; width: 1%; white-space: nowrap; vertical-align: middle;">
+        <span style="
+          background: ${sourceBadgeColor};
+          color: white;
+          font-size: 10px;
+          font-weight: bold;
+          padding: 2px 6px;
+          border-radius: 3px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        ">${sourceType}</span>
+      </td>
+      <td style="padding: 10px 8px; vertical-align: middle;">
+        <a href="${itemUrl}" style="color: #1a0dab; text-decoration: none; font-size: 14px;">${title}</a>
+        <span style="color: #aaa; font-size: 11px; margin-left: 8px;">${date}</span>
+      </td>
+      <td style="padding: 10px 8px; width: 1%; white-space: nowrap; vertical-align: middle;">
+        <a href="${saveUrl}" style="
+          display: inline-block;
+          background: #1a73e8;
+          color: white;
+          padding: 4px 10px;
+          border-radius: 3px;
+          text-decoration: none;
+          font-size: 12px;
+          margin-right: 4px;
+        ">Save</a>
+        <a href="${dismissUrl}" style="
+          display: inline-block;
+          background: #f1f3f4;
+          color: #444;
+          padding: 4px 10px;
+          border-radius: 3px;
+          text-decoration: none;
+          font-size: 12px;
+        ">Dismiss</a>
+      </td>
+    </tr>
+  `;
 }
 
 /**

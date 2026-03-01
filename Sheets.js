@@ -37,6 +37,27 @@ function addItemToInbox(item, summary) {
 // ─── Inbox Reads ─────────────────────────────────────────────────────────────
 
 /**
+ * Returns all Inbox rows where Status = Pending, regardless of DigestSent flag.
+ * Used by the weekly digest to show the full pending backlog.
+ *
+ * @returns {Object[]} Array of row objects
+ */
+function getAllPendingItems() {
+  const sheet  = getSheet(TABS.INBOX);
+  const data   = sheet.getDataRange().getValues();
+  const result = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[COL.STATUS - 1] === STATUS.PENDING) {
+      result.push(rowToObject(row, i + 1));
+    }
+  }
+
+  return result;
+}
+
+/**
  * Returns all Inbox rows where Status = Pending and DigestSent = false.
  * Each row is returned as an object keyed by column name for easy access.
  *
@@ -123,6 +144,47 @@ function updateDocLink(itemId, docLink) {
   getSheet(TABS.INBOX)
     .getRange(found.rowIndex, COL.DOC_LINK)
     .setValue(docLink);
+}
+
+// ─── Archiving ────────────────────────────────────────────────────────────────
+
+/**
+ * Moves all Saved and Dismissed rows from the Inbox tab to the Archive tab.
+ * Rows are appended to Archive in their original order, then deleted from Inbox
+ * bottom-to-top to preserve row indices during deletion.
+ *
+ * Safe to run repeatedly — only processes rows with a terminal status.
+ *
+ * @returns {number} Number of rows archived
+ */
+function archiveProcessedItems() {
+  const inboxSheet   = getSheet(TABS.INBOX);
+  const archiveSheet = getSheet(TABS.ARCHIVE);
+  const data         = inboxSheet.getDataRange().getValues();
+
+  const rowsToArchive      = [];
+  const rowIndicesToDelete = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const status = data[i][COL.STATUS - 1];
+    if (status === STATUS.SAVED || status === STATUS.DISMISSED) {
+      rowsToArchive.push(data[i]);
+      rowIndicesToDelete.push(i + 1); // 1-based sheet row index
+    }
+  }
+
+  if (rowsToArchive.length === 0) {
+    Logger.log('Archive: no processed items to move');
+    return 0;
+  }
+
+  rowsToArchive.forEach(row => archiveSheet.appendRow(row));
+
+  // Delete in reverse order so earlier row indices stay valid
+  rowIndicesToDelete.reverse().forEach(rowIndex => inboxSheet.deleteRow(rowIndex));
+
+  Logger.log(`Archive: moved ${rowsToArchive.length} item(s) to Archive tab`);
+  return rowsToArchive.length;
 }
 
 // ─── Config Tab ───────────────────────────────────────────────────────────────
