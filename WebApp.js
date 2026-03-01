@@ -10,11 +10,15 @@
  * This ensures all pages only function when the user is authenticated,
  * preventing unintended saves if a link is forwarded.
  *
- * Request format:
+ * Request format (all GET):
  *   (no params)                                     — real-time inbox view
+ *   ?action=capture&url=...                         — bookmarklet capture review page
  *   ?id=ITEM_ID&action=save                         — show tag selection page
  *   ?id=ITEM_ID&action=confirm&tags=tag1&tags=tag2  — save to selected tags
  *   ?id=ITEM_ID&action=dismiss                      — dismiss item
+ *
+ * Capture confirm uses google.script.run (no HTTP round-trip).
+ * Tweet content is fetched server-side via oEmbed — nothing large in the URL.
  */
 
 /**
@@ -31,6 +35,11 @@ function doGet(e) {
   // No params — serve the real-time inbox view
   if (!action && !itemId) {
     return handleInboxView();
+  }
+
+  // Bookmarklet capture — only the URL is passed; content fetched server-side.
+  if (action === 'capture') {
+    return handleCaptureLoad(params);
   }
 
   if (!itemId || !action) {
@@ -61,6 +70,231 @@ function doGet(e) {
     return handleSaveConfirm(itemId, item, selectedTags);
   }
   return handleDismiss(itemId, item);
+}
+
+// ─── Capture Handlers ─────────────────────────────────────────────────────────
+
+/**
+ * Fetches tweet data via the public oEmbed API.
+ * Returns { title, content } where title is "Tweet by @handle" and content
+ * is the tweet text extracted from the <p> element only (the attribution
+ * line — author name, handle, date — is excluded).
+ * Returns null if the request fails.
+ *
+ * @param {string} tweetUrl
+ * @returns {{ title: string, content: string } | null}
+ */
+function fetchTweetData(tweetUrl) {
+  try {
+    const endpoint = 'https://publish.twitter.com/oembed?omit_script=true&url='
+      + encodeURIComponent(tweetUrl);
+    const response = UrlFetchApp.fetch(endpoint, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) return null;
+    const data = JSON.parse(response.getContentText());
+    if (!data.html) return null;
+
+    // Extract only the <p> element to exclude the attribution line
+    // (the "— Author (@handle) Date" text that follows the <p> in oEmbed HTML).
+    const pMatch = data.html.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+    const rawContent = pMatch ? pMatch[1] : data.html;
+
+    const content = decodeHtmlEntities(
+      rawContent
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<[^>]+>/g, '')  // strip all remaining HTML tags
+    ).replace(/\n{3,}/g, '\n\n').trim();
+
+    const handle = data.author_url
+      ? '@' + data.author_url.replace(/.*\//, '')
+      : '';
+    const title = `Tweet by ${data.author_name || ''}${handle ? ' (' + handle + ')' : ''}`.trim();
+
+    return { title, content };
+  } catch (e) {
+    Logger.log(`fetchTweetData failed for ${tweetUrl}: ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * Decodes common HTML entities to their plain-text equivalents.
+ *
+ * @param {string} str
+ * @returns {string}
+ */
+function decodeHtmlEntities(str) {
+  return str
+    .replace(/&amp;/g,   '&')
+    .replace(/&lt;/g,    '<')
+    .replace(/&gt;/g,    '>')
+    .replace(/&quot;/g,  '"')
+    .replace(/&#39;/g,   "'")
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–')
+    .replace(/&nbsp;/g,  ' ')
+    .replace(/&#(\d+);/g,   (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([\da-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
+}
+
+/**
+ * Serves the bookmarklet capture review page.
+ * For X.com/Twitter URLs the tweet text is fetched server-side via the public
+ * oEmbed API — no content needs to be passed through the browser at all.
+ * For other URLs, content can be passed as a query parameter.
+ *
+ * @param {Object} params - Parsed query parameters from doGet (or POST body)
+ * @returns {GoogleAppsScript.HTML.HtmlOutput}
+ */
+function handleCaptureLoad(params) {
+  const webAppUrl = getProperty(PROP.WEBAPP_URL);
+  const url       = (params.url     || '').trim();
+  let   content   = (params.content || '').trim();
+  let   title     = (params.title   || '').trim();
+
+  // For tweet URLs with no content supplied, fetch via oEmbed server-side.
+  if (!content && (url.includes('x.com/') || url.includes('twitter.com/')) && url.includes('/status/')) {
+    const tweetData = fetchTweetData(url);
+    if (tweetData) {
+      content = tweetData.content;
+      if (!title) title = tweetData.title;
+    }
+  }
+  if (!title && content) {
+    title = content.slice(0, 100).replace(/[\n\r]+/g, ' ');
+  }
+
+  const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Capture to PKM</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        font-family: sans-serif;
+        max-width: 640px;
+        margin: 40px auto;
+        padding: 0 16px 40px;
+        background: #f8f9fa;
+        color: #222;
+      }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      .subtitle { color: #888; font-size: 13px; margin: 0 0 24px; }
+      label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #444; }
+      input[type=text], textarea {
+        width: 100%;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 8px 10px;
+        font-size: 14px;
+        font-family: inherit;
+        margin-bottom: 16px;
+        background: white;
+      }
+      textarea { height: 280px; resize: vertical; line-height: 1.5; }
+      .note { font-size: 12px; color: #888; margin: -12px 0 16px; }
+      .actions { display: flex; gap: 8px; }
+      .btn {
+        display: inline-block;
+        padding: 8px 20px;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 500;
+        border: none;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .btn-primary { background: #1a73e8; color: white; }
+      .btn-secondary { background: #f1f3f4; color: #444; }
+    </style>
+  </head>
+  <body>
+    <h1>Capture to PKM</h1>
+    <p class="subtitle">Review and edit before adding to your inbox.</p>
+    <label for="title">Title</label>
+    <input type="text" id="title" value="${escapeHtml(title)}">
+    <label for="url">URL</label>
+    <input type="text" id="url" value="${escapeHtml(url)}">
+    <label for="content">Content</label>
+    <textarea id="content">${escapeHtml(content)}</textarea>
+    <p class="note">Tip: describe any images or graphics above — Gemini will include them in the summary.</p>
+    <div class="actions">
+      <button id="submitBtn" class="btn btn-primary" onclick="submitCapture()">Add to PKM</button>
+      <a href="${webAppUrl}" class="btn btn-secondary">Cancel</a>
+    </div>
+    <script>
+      function submitCapture() {
+        var btn     = document.getElementById('submitBtn');
+        var title   = document.getElementById('title').value.trim();
+        var url     = document.getElementById('url').value.trim();
+        var content = document.getElementById('content').value.trim();
+        if (!content) { alert('Content is required.'); return; }
+        btn.disabled    = true;
+        btn.textContent = 'Adding\u2026';
+        google.script.run
+          .withSuccessHandler(function(msg) {
+            document.body.innerHTML =
+              '<div style="max-width:520px;margin:80px auto;font-family:sans-serif;text-align:center;">'
+              + '<p style="font-size:15px;">' + msg + '</p></div>';
+          })
+          .withFailureHandler(function(err) {
+            btn.disabled    = false;
+            btn.textContent = 'Add to PKM';
+            alert('Error: ' + err.message);
+          })
+          .captureConfirmFromClient(title, url, content);
+      }
+    </script>
+  </body>
+</html>`;
+
+  return HtmlService.createHtmlOutput(html)
+    .setTitle('Capture to PKM')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+}
+
+/**
+ * Server-side function called via google.script.run from the capture review
+ * page. Returns a plain HTML string (not HtmlOutput) so the client can insert
+ * it directly into the page without a full navigation.
+ *
+ * @param {string} title
+ * @param {string} url
+ * @param {string} content
+ * @returns {string} Success message HTML
+ */
+function captureConfirmFromClient(title, url, content) {
+  if (!content) return 'No content provided — nothing was added.';
+
+  const item = normalizeItem({
+    sourceType: SOURCE.CAPTURE,
+    title:      title || url || 'Captured item',
+    url:        url,
+    content:    content,
+  });
+
+  let summary;
+  try {
+    summary = summarizeItem(item);
+  } catch (e) {
+    Logger.log(`Capture: Gemini failed for "${item.title}" — storing raw content. Error: ${e.message}`);
+    summary = {
+      shortSummary: content.slice(0, 300),
+      fullSummary:  content,
+      tags:         [],
+      keyTerms:     [],
+      keyPoints:    [],
+      actionItems:  [],
+    };
+  }
+
+  addItemToInbox(item, summary);
+  addProcessedId(item.id);
+  Logger.log(`Capture: added "${item.title}" to inbox`);
+
+  const webAppUrl = getProperty(PROP.WEBAPP_URL);
+  return `Added to inbox. <a href="${webAppUrl}" style="color:#1a73e8;">← Back to Inbox</a>`;
 }
 
 // ─── Inbox View ───────────────────────────────────────────────────────────────
@@ -195,6 +429,7 @@ function buildInboxItemCard(item, webAppUrl) {
     [SOURCE.YOUTUBE]: '#FF0000',
     [SOURCE.GMAIL]:   '#EA4335',
     [SOURCE.TASKS]:   '#1A73E8',
+    [SOURCE.CAPTURE]: '#00897B',
   }[item.sourceType] || '#888';
 
   return `

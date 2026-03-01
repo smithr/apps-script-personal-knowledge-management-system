@@ -108,6 +108,20 @@ Instructions:
 - keyPoints: key facts or concepts about this topic
 - actionItems: concrete next steps if any are implied`;
 
+const PROMPT_CAPTURE = `You are an expert assistant analyzing a captured social media post or web content.
+Return ONLY a valid JSON object matching this schema — no preamble, no markdown fences:
+${OUTPUT_SCHEMA}
+
+Instructions:
+- shortSummary: 2-3 sentences on the core idea and whether it is worth deeper engagement
+- fullSummary:
+  ${FULL_SUMMARY_INSTRUCTIONS}
+- tags: 2-5 lowercase topic tags
+- keyTerms: extract 3-8 important named concepts, tools, frameworks, or jargon from the post,
+  each with a one-sentence definition using exact source terminology
+- keyPoints: the most important specific points or insights from the post
+- actionItems: concrete next steps if any are implied (empty array if none)`;
+
 // ─── Summarization ───────────────────────────────────────────────────────────
 
 /**
@@ -126,6 +140,7 @@ const GEMINI_RATE_LIMIT_DELAY_MS = {
   [SOURCE.YOUTUBE]: 15000,
   [SOURCE.GMAIL]:    2000,
   [SOURCE.TASKS]:    2000,
+  [SOURCE.CAPTURE]:     0,  // single on-demand call — no batching delay needed
 };
 
 function summarizeItem(item) {
@@ -240,6 +255,7 @@ function getPromptForSource(sourceType) {
     case SOURCE.YOUTUBE: return PROMPT_YOUTUBE;
     case SOURCE.GMAIL:   return PROMPT_GMAIL;
     case SOURCE.TASKS:   return PROMPT_TASKS;
+    case SOURCE.CAPTURE: return PROMPT_CAPTURE;
     default: throw new Error(`Unknown sourceType: ${sourceType}`);
   }
 }

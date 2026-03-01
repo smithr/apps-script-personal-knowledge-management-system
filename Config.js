@@ -48,6 +48,7 @@ const SOURCE = {
   YOUTUBE: 'YouTube',
   GMAIL:   'Gmail',
   TASKS:   'Tasks',
+  CAPTURE: 'Capture', // manually captured via bookmarklet
 };
 
 // ─── Property Accessors ───────────────────────────────────────────────────────
