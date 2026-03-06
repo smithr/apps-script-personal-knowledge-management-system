@@ -201,9 +201,15 @@ function buildRequestParts(item, prompt) {
     ];
   }
   if (item.sourceType === SOURCE.TASKS) {
-    return [
-      { text: `${prompt}\n\nURL: ${item.url}` },
-    ];
+    // Fetch the URL content so Gemini summarizes the actual article rather than
+    // guessing from its training data. Falls back to URL-only if the fetch fails
+    // (e.g. paywalled, login-required, or non-HTML content).
+    const fetched = fetchUrlContent(item.url);
+    if (fetched) {
+      return [{ text: `${prompt}\n\n---\n\n${fetched}` }];
+    }
+    Logger.log(`Tasks: could not fetch content for ${item.url} — passing URL only`);
+    return [{ text: `${prompt}\n\nURL: ${item.url}` }];
   }
   return [
     { text: `${prompt}\n\n---\n\n${item.content}` },

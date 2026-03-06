@@ -64,6 +64,36 @@ function stripHtml(html) {
     .trim();
 }
 
+/**
+ * Fetches a URL and returns its content as plain text.
+ * Strips scripts, styles, and HTML tags using stripHtml.
+ * Returns an empty string on any failure so callers can fall back gracefully.
+ *
+ * Caps output at 50,000 characters — enough for a long article without
+ * blowing through Gemini's token budget.
+ *
+ * @param {string} url
+ * @returns {string}
+ */
+function fetchUrlContent(url) {
+  if (!url || !url.startsWith('http')) return '';
+  try {
+    const response = UrlFetchApp.fetch(url, {
+      muteHttpExceptions: true,
+      followRedirects:    true,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PKM-Bot/1.0)' },
+    });
+    if (response.getResponseCode() !== 200) {
+      Logger.log(`fetchUrlContent: HTTP ${response.getResponseCode()} for ${url}`);
+      return '';
+    }
+    return stripHtml(response.getContentText()).slice(0, 50000);
+  } catch (e) {
+    Logger.log(`fetchUrlContent failed for ${url}: ${e.message}`);
+    return '';
+  }
+}
+
 // ─── Item Normalization ──────────────────────────────────────────────────────
 
 /**
