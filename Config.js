@@ -34,6 +34,7 @@ const COL = {
   DIGEST_SENT:  9,
   DOC_LINK:     10,
   SUMMARY_JSON: 11,  // full Gemini JSON blob for downstream use
+  SOURCE_ID:    12,  // source-native ID used for deduplication (videoId / threadId / taskId)
 };
 
 // ─── Status Values ────────────────────────────────────────────────────────────
@@ -84,6 +85,23 @@ function addProcessedId(id) {
 
 function isProcessed(id) {
   return DEBUG ? false : getProcessedIds().has(id);
+}
+
+/**
+ * Returns the source-native deduplication ID from a normalized item.
+ * This is the ID that is stored in PROCESSED_IDS — not the UUID item.id.
+ *
+ * @param {Object} item - Normalized item from a source connector
+ * @returns {string}
+ */
+function getSourceNativeId(item) {
+  switch (item.sourceType) {
+    case SOURCE.YOUTUBE: return item.rawMetadata.videoId;
+    case SOURCE.GMAIL:   return item.rawMetadata.threadId;
+    case SOURCE.TASKS:   return item.rawMetadata.taskId;
+    case SOURCE.CAPTURE: return item.rawMetadata.captureId || item.id;
+    default:             return item.id;
+  }
 }
 
 /**

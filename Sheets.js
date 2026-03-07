@@ -30,6 +30,7 @@ function addItemToInbox(item, summary) {
   row[COL.DIGEST_SENT  - 1] = false;
   row[COL.DOC_LINK     - 1] = '';
   row[COL.SUMMARY_JSON - 1] = JSON.stringify(summary);
+  row[COL.SOURCE_ID    - 1] = getSourceNativeId(item);
 
   sheet.appendRow(row);
 }
@@ -254,5 +255,6 @@ function rowToObject(row, rowIndex) {
     digestSent:  row[COL.DIGEST_SENT  - 1],
     docLink:     row[COL.DOC_LINK     - 1],
     summaryJson: row[COL.SUMMARY_JSON - 1],
+    sourceId:    row[COL.SOURCE_ID    - 1],
   };
 }
