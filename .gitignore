@@ -27,3 +27,4 @@ objects
 refs
 HEAD
 config
+.playwright-mcp
