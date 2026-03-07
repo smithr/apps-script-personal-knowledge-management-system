@@ -108,3 +108,10 @@ function removeProcessedId(id) {
   setProperty(PROP.PROCESSED_IDS, JSON.stringify(Array.from(ids)));
   Logger.log(`removeProcessedId: "${id}" removed. It will be reprocessed on the next pipeline run.`);
 }
+/**
+ * Convenience runner — replace REPLACE_ME with the ID you want to reprocess,
+ * then run this function from the Apps Script editor.
+ */
+function reprocessItem() {
+  removeProcessedId('REPLACE_ME');
+}
