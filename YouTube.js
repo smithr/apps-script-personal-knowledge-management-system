@@ -27,6 +27,7 @@ function runYouTubePipeline() {
       try {
         const summary = summarizeItem(item);
         addItemToInbox(item, summary);
+        removeFromPlaylist(item.rawMetadata.playlistItemId, item.title);
       } catch (e) {
         Logger.log(`YouTube: failed to process "${item.title}" — skipping. Error: ${e.message}`);
       } finally {
@@ -68,7 +69,7 @@ function fetchPlaylistVideos(playlistId) {
         title:       item.snippet.title,
         url:         videoUrl,
         content:     videoUrl, // Gemini receives the URL directly for video understanding
-        rawMetadata: { videoId, playlistId },
+        rawMetadata: { videoId, playlistId, playlistItemId: item.id },
       }));
     });
 
@@ -76,4 +77,21 @@ function fetchPlaylistVideos(playlistId) {
   } while (pageToken);
 
   return newItems;
+}
+
+/**
+ * Removes a video from the playlist after it has been summarized and added
+ * to the inbox. Failures are logged but do not affect the pipeline — the
+ * item is already in the inbox regardless.
+ *
+ * @param {string} playlistItemId - The playlist entry ID (item.id from the API response)
+ * @param {string} title          - Video title, used only for logging
+ */
+function removeFromPlaylist(playlistItemId, title) {
+  try {
+    YouTube.PlaylistItems.remove(playlistItemId);
+    Logger.log(`YouTube: removed "${title}" from playlist`);
+  } catch (e) {
+    Logger.log(`YouTube: failed to remove "${title}" from playlist — ${e.message}`);
+  }
 }
