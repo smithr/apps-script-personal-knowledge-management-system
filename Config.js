@@ -77,11 +77,34 @@ function getProcessedIds() {
 function addProcessedId(id) {
   const ids = getProcessedIds();
   ids.add(id);
-  // Keep the store from growing unboundedly — retain last 2000 IDs
-  const trimmed = Array.from(ids).slice(-2000);
+  // Keep the store from growing unboundedly — retain last 10,000 IDs
+  const trimmed = Array.from(ids).slice(-10000);
   setProperty(PROP.PROCESSED_IDS, JSON.stringify(trimmed));
 }
 
 function isProcessed(id) {
-  return DEBUG ? false: getProcessedIds().has(id);
+  return DEBUG ? false : getProcessedIds().has(id);
+}
+
+/**
+ * Removes a single ID from the processed store so the item will be
+ * re-fetched and re-summarized on the next pipeline run.
+ *
+ * Run this manually in the Apps Script editor when you want to
+ * reprocess a specific item. Pass the source-specific ID:
+ *   YouTube : videoId   (e.g. "dQw4w9WgXcQ")
+ *   Gmail   : threadId  (e.g. "18abc123def")
+ *   Tasks   : task.id   (e.g. "MDEwMTAxMDE")
+ *
+ * @param {string} id
+ */
+function removeProcessedId(id) {
+  const ids = getProcessedIds();
+  if (!ids.has(id)) {
+    Logger.log(`removeProcessedId: "${id}" not found in processed store — nothing changed.`);
+    return;
+  }
+  ids.delete(id);
+  setProperty(PROP.PROCESSED_IDS, JSON.stringify(Array.from(ids)));
+  Logger.log(`removeProcessedId: "${id}" removed. It will be reprocessed on the next pipeline run.`);
 }
