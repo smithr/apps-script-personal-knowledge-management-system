@@ -92,9 +92,11 @@ function buildWeeklyDigestEmail(items) {
  * @returns {string} HTML <tr> fragment
  */
 function buildWeeklyItemRow(item) {
-  const webAppUrl  = getProperty(PROP.WEBAPP_URL);
-  const saveUrl    = `${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=save`;
-  const dismissUrl = `${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=dismiss`;
+  const webAppUrl   = getProperty(PROP.WEBAPP_URL);
+  const saveUrl     = `${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=save`;
+  const dismissUrl  = `${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=dismiss`;
+  const provideUrl  = `${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=provide`;
+  const fetchFailed = String(item.summary || '').startsWith('Unable to summarize:');
 
   const title      = escapeHtml(item.title);
   const sourceType = escapeHtml(item.sourceType);
@@ -145,6 +147,16 @@ function buildWeeklyItemRow(item) {
           text-decoration: none;
           font-size: 12px;
         ">Dismiss</a>
+        ${fetchFailed ? `<a href="${provideUrl}" style="
+          display: inline-block;
+          background: #fff3e0;
+          color: #e65100;
+          padding: 4px 10px;
+          border-radius: 3px;
+          text-decoration: none;
+          font-size: 12px;
+          margin-left: 4px;
+        ">Provide Content</a>` : ''}
       </td>
     </tr>
   `;
@@ -180,9 +192,11 @@ function buildDigestEmail(items) {
  * @returns {string} HTML fragment
  */
 function buildItemCard(item) {
-  const webAppUrl  = getProperty(PROP.WEBAPP_URL);
-  const saveUrl    = `${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=save`;
-  const dismissUrl = `${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=dismiss`;
+  const webAppUrl   = getProperty(PROP.WEBAPP_URL);
+  const saveUrl     = `${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=save`;
+  const dismissUrl  = `${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=dismiss`;
+  const provideUrl  = `${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=provide`;
+  const fetchFailed = String(item.summary || '').startsWith('Unable to summarize:');
 
   const title      = escapeHtml(item.title);
   const summary    = formatSummaryAsHtml(item.summary);
@@ -241,6 +255,16 @@ function buildItemCard(item) {
           text-decoration: none;
           font-size: 13px;
         ">Dismiss</a>
+        ${fetchFailed ? `<a href="${provideUrl}" style="
+          display: inline-block;
+          background: #fff3e0;
+          color: #e65100;
+          padding: 6px 14px;
+          border-radius: 4px;
+          text-decoration: none;
+          font-size: 13px;
+          margin-left: 8px;
+        ">Provide Content</a>` : ''}
       </div>
     </div>
   `;

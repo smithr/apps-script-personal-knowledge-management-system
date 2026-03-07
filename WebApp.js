@@ -45,7 +45,7 @@ function doGet(e) {
   if (!itemId || !action) {
     return buildConfirmationPage('Invalid request — missing id or action parameter.');
   }
-  if (action !== 'save' && action !== 'confirm' && action !== 'dismiss') {
+  if (action !== 'save' && action !== 'confirm' && action !== 'dismiss' && action !== 'provide') {
     return buildConfirmationPage(`Invalid action: "${escapeHtml(action)}".`);
   }
 
@@ -68,6 +68,9 @@ function doGet(e) {
   if (action === 'confirm') {
     const selectedTags = (e.parameters.tags || []).filter(t => t);
     return handleSaveConfirm(itemId, item, selectedTags);
+  }
+  if (action === 'provide') {
+    return handleProvideContent(itemId, item);
   }
   return handleDismiss(itemId, item);
 }
@@ -297,6 +300,173 @@ function captureConfirmFromClient(title, url, content) {
   return `Added to inbox. <a href="${webAppUrl}" target="_top" style="color:#1a73e8;">← Back to Inbox</a>`;
 }
 
+// ─── Provide Content Handler ─────────────────────────────────────────────────
+
+/**
+ * Returns true when an inbox item has the fetch-failure stub summary,
+ * meaning the URL could not be fetched at ingest time.
+ *
+ * @param {Object} item - Row object from Sheets
+ * @returns {boolean}
+ */
+function isFetchFailureItem(item) {
+  return String(item.summary || '').startsWith('Unable to summarize:');
+}
+
+/**
+ * Serves the "Provide Content" page for an item whose URL could not be
+ * fetched. The user pastes the article text into a textarea; on submit
+ * google.script.run.provideContentFromClient() re-summarizes in-place.
+ *
+ * @param {string} itemId
+ * @param {Object} item - Row object from Sheets
+ * @returns {GoogleAppsScript.HTML.HtmlOutput}
+ */
+function handleProvideContent(itemId, item) {
+  const webAppUrl = getProperty(PROP.WEBAPP_URL);
+
+  const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Provide Content</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        font-family: sans-serif;
+        max-width: 680px;
+        margin: 40px auto;
+        padding: 0 16px 40px;
+        background: #f8f9fa;
+        color: #222;
+      }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      .subtitle { color: #888; font-size: 13px; margin: 0 0 24px; }
+      .item-title { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+      .item-url { font-size: 12px; color: #888; margin: 0 0 20px; word-break: break-all; }
+      label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #444; }
+      textarea {
+        width: 100%;
+        height: 360px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 10px;
+        font-size: 13px;
+        font-family: inherit;
+        line-height: 1.5;
+        resize: vertical;
+        background: white;
+        margin-bottom: 4px;
+      }
+      .char-count { font-size: 12px; color: #aaa; text-align: right; margin-bottom: 16px; }
+      .char-count.warn { color: #e67e22; }
+      .note { font-size: 12px; color: #888; margin: 0 0 16px; }
+      .actions { display: flex; gap: 8px; }
+      .btn {
+        display: inline-block;
+        padding: 8px 20px;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 500;
+        border: none;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .btn-primary { background: #1a73e8; color: white; }
+      .btn-secondary { background: #f1f3f4; color: #444; }
+    </style>
+  </head>
+  <body>
+    <h1>Provide Content</h1>
+    <p class="subtitle">The URL for this item could not be fetched automatically. Paste the article text below and it will be re-summarized.</p>
+    <p class="item-title">${escapeHtml(item.title)}</p>
+    <p class="item-url"><a href="${encodeURI(item.url)}" target="_blank">${escapeHtml(item.url)}</a></p>
+    <label for="content">Article text</label>
+    <textarea id="content" placeholder="Paste the full article text here\u2026" oninput="updateCount()"></textarea>
+    <div id="charCount" class="char-count">0 / 50,000</div>
+    <p class="note">Tip: select all text on the article page (Ctrl+A / Cmd+A), copy, then paste here. Images and graphics won't transfer but everything else will.</p>
+    <div class="actions">
+      <button id="submitBtn" class="btn btn-primary" onclick="submitContent()">Re-summarize</button>
+      <a href="${webAppUrl}" class="btn btn-secondary" target="_top">Cancel</a>
+    </div>
+    <script>
+      var MAX = 50000;
+      function updateCount() {
+        var len = document.getElementById('content').value.length;
+        var el  = document.getElementById('charCount');
+        el.textContent = len.toLocaleString() + ' / 50,000';
+        el.className = 'char-count' + (len > MAX * 0.9 ? ' warn' : '');
+      }
+      function submitContent() {
+        var btn     = document.getElementById('submitBtn');
+        var content = document.getElementById('content').value.trim().slice(0, MAX);
+        if (!content) { alert('Please paste some content first.'); return; }
+        btn.disabled    = true;
+        btn.textContent = 'Summarizing\u2026';
+        google.script.run
+          .withSuccessHandler(function(msg) {
+            document.body.innerHTML =
+              '<div style="max-width:520px;margin:80px auto;font-family:sans-serif;text-align:center;">'
+              + '<p style="font-size:15px;">' + msg + '</p></div>';
+          })
+          .withFailureHandler(function(err) {
+            btn.disabled    = false;
+            btn.textContent = 'Re-summarize';
+            alert('Error: ' + err.message);
+          })
+          .provideContentFromClient('${escapeHtml(itemId)}', content);
+      }
+    </script>
+  </body>
+</html>`;
+
+  return HtmlService.createHtmlOutput(html)
+    .setTitle('Provide Content')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+}
+
+/**
+ * Server-side function called via google.script.run from the provide-content
+ * page. Re-summarizes the item with the user-supplied text and updates the
+ * SUMMARY, TAGS, and SUMMARY_JSON columns in-place.
+ *
+ * @param {string} itemId
+ * @param {string} content - Pasted article text (max 50,000 chars)
+ * @returns {string} Success message HTML
+ */
+function provideContentFromClient(itemId, content) {
+  if (!content) return 'No content provided — nothing was changed.';
+
+  const found = getItemById(itemId);
+  if (!found) return 'Item not found — it may have already been removed.';
+
+  const item = found.data;
+
+  // Build a temporary item with the pasted content so summarizeItem can use it.
+  // Preserve the original source type so the correct prompt template is used.
+  const tempItem = normalizeItem({
+    sourceType: item.sourceType,
+    title:      item.title,
+    url:        item.url,
+    content:    content.slice(0, 50000),
+  });
+
+  let summary;
+  try {
+    summary = summarizeItem(tempItem);
+  } catch (e) {
+    Logger.log(`provideContentFromClient: Gemini failed for item ${itemId}: ${e.message}`);
+    throw e; // propagate to withFailureHandler on the client
+  }
+
+  updateItemSummary(itemId, summary);
+  Logger.log(`provideContentFromClient: re-summarized item ${itemId} ("${item.title}")`);
+
+  const webAppUrl = getProperty(PROP.WEBAPP_URL);
+  return `Summary updated. <a href="${webAppUrl}" target="_top" style="color:#1a73e8;">← Back to Inbox</a>`;
+}
+
 // ─── Inbox View ───────────────────────────────────────────────────────────────
 
 /**
@@ -447,6 +617,7 @@ function buildInboxItemCard(item, webAppUrl) {
       <div class="actions">
         <a href="${saveUrl}" class="btn btn-save" target="_top">Save to PKM</a>
         <a href="${dismissUrl}" class="btn btn-dismiss" target="_top">Dismiss</a>
+        ${isFetchFailureItem(item) ? `<a href="${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=provide" class="btn" style="background:#f1f3f4;color:#444;" target="_top">Provide Content</a>` : ''}
       </div>
     </div>`;
 }

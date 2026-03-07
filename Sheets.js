@@ -134,6 +134,23 @@ function markItemsDigestSent(itemIds) {
 }
 
 /**
+ * Updates the summary columns (SUMMARY, TAGS, SUMMARY_JSON) for an existing
+ * inbox row in-place. Used when the user provides content for an item that
+ * previously failed to fetch.
+ *
+ * @param {string} itemId
+ * @param {Object} summary - Structured summary object from Gemini.js
+ */
+function updateItemSummary(itemId, summary) {
+  const found = getItemById(itemId);
+  if (!found) throw new Error(`Item not found: ${itemId}`);
+  const sheet = getSheet(TABS.INBOX);
+  sheet.getRange(found.rowIndex, COL.SUMMARY).setValue(summary.fullSummary);
+  sheet.getRange(found.rowIndex, COL.TAGS).setValue((summary.tags || []).join(', '));
+  sheet.getRange(found.rowIndex, COL.SUMMARY_JSON).setValue(JSON.stringify(summary));
+}
+
+/**
  * Updates the Doc Link column for a saved item.
  *
  * @param {string} itemId
