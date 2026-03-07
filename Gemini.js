@@ -151,9 +151,21 @@ function summarizeItem(item) {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const prompt   = getPromptForSource(item.sourceType);
 
+  const parts = buildRequestParts(item, prompt);
+  if (parts === null) {
+    return {
+      shortSummary: `Unable to summarize: the URL could not be fetched (${item.url}).`,
+      fullSummary:  `Unable to summarize: the URL could not be fetched. The page may be paywalled, require a login, or returned a non-200 response. URL: ${item.url}`,
+      tags:         [],
+      keyTerms:     [],
+      keyPoints:    [],
+      actionItems:  [],
+    };
+  }
+
   const payload = {
     contents: [{
-      parts: buildRequestParts(item, prompt),
+      parts,
     }],
     generationConfig: {
       temperature: 0.2,
@@ -202,14 +214,14 @@ function buildRequestParts(item, prompt) {
   }
   if (item.sourceType === SOURCE.TASKS) {
     // Fetch the URL content so Gemini summarizes the actual article rather than
-    // guessing from its training data. Falls back to URL-only if the fetch fails
-    // (e.g. paywalled, login-required, or non-HTML content).
+    // guessing from its training data. Returns null if the fetch fails so the
+    // caller can skip the Gemini call and return a stub summary instead.
     const fetched = fetchUrlContent(item.url);
     if (fetched) {
       return [{ text: `${prompt}\n\n---\n\n${fetched}` }];
     }
-    Logger.log(`Tasks: could not fetch content for ${item.url} — passing URL only`);
-    return [{ text: `${prompt}\n\nURL: ${item.url}` }];
+    Logger.log(`Tasks: could not fetch content for ${item.url} — skipping Gemini call`);
+    return null;
   }
   return [
     { text: `${prompt}\n\n---\n\n${item.content}` },
