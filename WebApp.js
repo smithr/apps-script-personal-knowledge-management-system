@@ -221,7 +221,7 @@ function handleCaptureLoad(params) {
     <p class="note">Tip: describe any images or graphics above — Gemini will include them in the summary.</p>
     <div class="actions">
       <button id="submitBtn" class="btn btn-primary" onclick="submitCapture()">Add to PKM</button>
-      <a href="${webAppUrl}" class="btn btn-secondary">Cancel</a>
+      <a href="${webAppUrl}" class="btn btn-secondary" target="_top">Cancel</a>
     </div>
     <script>
       function submitCapture() {
@@ -294,7 +294,7 @@ function captureConfirmFromClient(title, url, content) {
   Logger.log(`Capture: added "${item.title}" to inbox`);
 
   const webAppUrl = getProperty(PROP.WEBAPP_URL);
-  return `Added to inbox. <a href="${webAppUrl}" style="color:#1a73e8;">← Back to Inbox</a>`;
+  return `Added to inbox. <a href="${webAppUrl}" target="_top" style="color:#1a73e8;">← Back to Inbox</a>`;
 }
 
 // ─── Inbox View ───────────────────────────────────────────────────────────────
@@ -445,8 +445,8 @@ function buildInboxItemCard(item, webAppUrl) {
         <div class="summary-body">${summary}</div>
       </details>
       <div class="actions">
-        <a href="${saveUrl}" class="btn btn-save">Save to PKM</a>
-        <a href="${dismissUrl}" class="btn btn-dismiss">Dismiss</a>
+        <a href="${saveUrl}" class="btn btn-save" target="_top">Save to PKM</a>
+        <a href="${dismissUrl}" class="btn btn-dismiss" target="_top">Dismiss</a>
       </div>
     </div>`;
 }
@@ -534,13 +534,13 @@ function handleSaveSelection(itemId, item) {
     <div class="card">
       <h2>${escapeHtml(item.title)}</h2>
       <p class="subtitle">Select topics to save this item to:</p>
-      <form method="GET" action="${webAppUrl}">
+      <form method="GET" action="${webAppUrl}" target="_top">
         <input type="hidden" name="id" value="${escapeHtml(itemId)}">
         <input type="hidden" name="action" value="confirm">
         <div class="tag-list">${checkboxes}</div>
         <button type="submit" class="btn">Save</button>
         <a href="${webAppUrl}?id=${encodeURIComponent(itemId)}&action=dismiss"
-           class="btn btn-secondary">Dismiss</a>
+           class="btn btn-secondary" target="_top">Dismiss</a>
       </form>
     </div>
   </body>
@@ -593,9 +593,9 @@ function handleSaveConfirm(itemId, item, selectedTags) {
     const tagList  = selectedTags.map(escapeHtml).join(', ');
     const webAppUrl = getProperty(PROP.WEBAPP_URL);
     const viewLink = docLink
-      ? ` <a href="${encodeURI(docLink)}">View in Doc →</a>`
+      ? ` <a href="${encodeURI(docLink)}" target="_top">View in Doc →</a>`
       : '';
-    const backLink = ` <a href="${webAppUrl}">← Back to Inbox</a>`;
+    const backLink = ` <a href="${webAppUrl}" target="_top">← Back to Inbox</a>`;
     Logger.log(`WebApp: saved item ${itemId} to tags [${tagList}] → ${docLink}`);
     return buildConfirmationPage(`Saved to: ${tagList}.${viewLink}${backLink}`);
   } catch (e) {
@@ -616,7 +616,7 @@ function handleDismiss(itemId, item) {
     updateItemStatus(itemId, STATUS.DISMISSED);
     Logger.log(`WebApp: dismissed item ${itemId}`);
     const webAppUrl = getProperty(PROP.WEBAPP_URL);
-    return buildConfirmationPage(`Dismissed. <a href="${webAppUrl}">← Back to Inbox</a>`);
+    return buildConfirmationPage(`Dismissed. <a href="${webAppUrl}" target="_top">← Back to Inbox</a>`);
   } catch (e) {
     Logger.log(`WebApp: error dismissing item ${itemId}: ${e.message}`);
     return buildConfirmationPage(`Something went wrong: ${escapeHtml(e.message)}`);
