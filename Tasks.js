@@ -86,5 +86,10 @@ function debugGetTasksListIds() {
   const lists = Tasks.Tasklists.list();
   lists.items.forEach(list => {
     Logger.log(`${list.title}: ${list.id}`);
+      const response = Tasks.Tasks.list(list.id, { showCompleted: false });
+      (response.items || []).forEach(task => {
+      if (task.status !== 'needsAction') return;
+      Logger.log(`Task: ${task.title}, id: ${task.id}`);
+    });
   });
 }
