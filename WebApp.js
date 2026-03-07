@@ -444,9 +444,10 @@ function provideContentFromClient(itemId, content) {
   const item = found.data;
 
   // Build a temporary item with the pasted content so summarizeItem can use it.
-  // Preserve the original source type so the correct prompt template is used.
+  // Use SOURCE.CAPTURE so buildRequestParts passes item.content directly to
+  // Gemini rather than trying (and failing) to fetch the URL again.
   const tempItem = normalizeItem({
-    sourceType: item.sourceType,
+    sourceType: SOURCE.CAPTURE,
     title:      item.title,
     url:        item.url,
     content:    content.slice(0, 50000),
