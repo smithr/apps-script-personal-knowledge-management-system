@@ -707,6 +707,11 @@ function buildLibraryPage(webAppUrl) {
       }
       .doc-link { font-size: 12px; color: #1a73e8; text-decoration: none; white-space: nowrap; }
       .doc-link:hover { text-decoration: underline; }
+      .remove-btn {
+        background: none; border: none; cursor: pointer;
+        color: #ccc; font-size: 18px; line-height: 1; padding: 0 2px;
+      }
+      .remove-btn:hover { color: #e53935; }
       .empty { color: #888; text-align: center; padding: 60px 0; grid-column: 1/-1; }
       .loading { color: #888; text-align: center; padding: 60px 0; }
       .badge {
@@ -813,9 +818,7 @@ function buildLibraryPage(webAppUrl) {
           return '<div class="card" id="card-' + esc(item.id) + '">'
             + '<div class="card-meta" style="display:flex;justify-content:space-between;align-items:center;">'
             + '<span><span class="badge" style="background:' + color + '">' + esc(item.sourceType) + '</span>' + date + '</span>'
-            + '<button onclick="removeCard(' + JSON.stringify(item.id) + ', this)" title="Remove from library" '
-            + 'style="background:none;border:none;cursor:pointer;color:#ccc;font-size:16px;padding:0 2px;line-height:1;" '
-            + 'onmouseover="this.style.color=\'#e53935\'" onmouseout="this.style.color=\'#ccc\'">×</button>'
+            + '<button class="remove-btn" onclick="removeCard(' + JSON.stringify(item.id) + ', this)" title="Remove from library">×</button>'
             + '</div>'
             + '<p class="card-title"><a href="' + esc(item.url) + '" target="_blank">' + esc(item.title) + '</a></p>'
             + '<p class="card-summary">' + esc(item.shortSummary) + '</p>'
