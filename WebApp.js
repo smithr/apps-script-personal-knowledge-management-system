@@ -777,9 +777,17 @@ function buildLibraryPage(webAppUrl) {
           });
         });
         document.getElementById('tagList').innerHTML = Object.keys(counts).sort().map(function(t) {
-          return '<button class="tag-btn" onclick="filterTag(' + JSON.stringify(t) + ', this)">'
+          return '<button class="tag-btn" data-tag="' + esc(t) + '" onclick="handleTagClick(this)">'
                + esc(t) + ' <span style="color:#bbb;font-weight:400;">(' + counts[t] + ')</span></button>';
         }).join('');
+      }
+
+      function handleTagClick(btn) {
+        filterTag(btn.getAttribute('data-tag'), btn);
+      }
+
+      function handleRemoveClick(btn) {
+        removeCard(btn.getAttribute('data-id'), btn);
       }
 
       function filterTag(tag, btn) {
@@ -818,7 +826,7 @@ function buildLibraryPage(webAppUrl) {
           return '<div class="card" id="card-' + esc(item.id) + '">'
             + '<div class="card-meta" style="display:flex;justify-content:space-between;align-items:center;">'
             + '<span><span class="badge" style="background:' + color + '">' + esc(item.sourceType) + '</span>' + date + '</span>'
-            + '<button class="remove-btn" onclick="removeCard(' + JSON.stringify(item.id) + ', this)" title="Remove from library">×</button>'
+            + '<button class="remove-btn" data-id="' + esc(item.id) + '" onclick="handleRemoveClick(this)" title="Remove from library">×</button>'
             + '</div>'
             + '<p class="card-title"><a href="' + esc(item.url) + '" target="_blank">' + esc(item.title) + '</a></p>'
             + '<p class="card-summary">' + esc(item.shortSummary) + '</p>'
