@@ -100,13 +100,31 @@ function addItemToLibrary(item, summary, selectedTags, docLink) {
 }
 
 /**
- * Returns the full library index.
+ * Returns the full library index plus the list of configured tags from the
+ * Config sheet. The client uses configuredTags to filter the tag sidebar.
  * Exposed to the client via google.script.run.getLibraryIndexJson().
  *
- * @returns {{ lastUpdated: string, items: Array }}
+ * @returns {{ lastUpdated: string, items: Array, configuredTags: string[] }}
  */
 function getLibraryIndexJson() {
-  return readLibraryIndex();
+  const index = readLibraryIndex();
+  index.configuredTags = getConfiguredTags();
+  return index;
+}
+
+/**
+ * Removes a single item from the library index by its item UUID.
+ * Called via google.script.run from the library card's remove button.
+ *
+ * @param {string} itemId - The item UUID (COL.ITEM_ID value)
+ */
+function removeFromLibrary(itemId) {
+  const index = readLibraryIndex();
+  const before = (index.items || []).length;
+  index.items = index.items.filter(e => e.id !== itemId);
+  index.lastUpdated = new Date().toISOString();
+  writeLibraryIndex(index);
+  Logger.log(`Library: removed item ${itemId} (${before - index.items.length} entry removed)`);
 }
 
 /**

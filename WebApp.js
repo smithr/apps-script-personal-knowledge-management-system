@@ -736,8 +736,9 @@ function buildLibraryPage(webAppUrl) {
       </main>
     </div>
     <script>
-      var allItems  = [];
-      var activeTag = null;
+      var allItems      = [];
+      var configuredTags = [];
+      var activeTag     = null;
 
       var BADGE_COLORS = {
         'YouTube': '#FF0000',
@@ -748,7 +749,9 @@ function buildLibraryPage(webAppUrl) {
 
       google.script.run
         .withSuccessHandler(function(index) {
-          allItems = (index.items || []).slice().reverse(); // newest first
+          // Only show items that were saved to a Doc
+          allItems       = (index.items || []).filter(function(i) { return !!i.docLink; }).reverse();
+          configuredTags = (index.configuredTags || []).map(function(t) { return t.toLowerCase(); });
           buildTagSidebar();
           renderGrid();
           document.getElementById('status').style.display = 'none';
@@ -759,9 +762,14 @@ function buildLibraryPage(webAppUrl) {
         .getLibraryIndexJson();
 
       function buildTagSidebar() {
+        // Count only configured tags so Gemini-suggested tags don't pollute the sidebar
         var counts = {};
         allItems.forEach(function(item) {
-          (item.tags || []).forEach(function(t) { counts[t] = (counts[t] || 0) + 1; });
+          (item.tags || []).forEach(function(t) {
+            if (configuredTags.indexOf(t.toLowerCase()) !== -1) {
+              counts[t.toLowerCase()] = (counts[t.toLowerCase()] || 0) + 1;
+            }
+          });
         });
         document.getElementById('tagList').innerHTML = Object.keys(counts).sort().map(function(t) {
           return '<button class="tag-btn" onclick="filterTag(' + JSON.stringify(t) + ', this)">'
@@ -779,7 +787,10 @@ function buildLibraryPage(webAppUrl) {
       function renderGrid() {
         var q = document.getElementById('searchBox').value.trim().toLowerCase();
         var visible = allItems.filter(function(item) {
-          if (activeTag && !(item.tags || []).includes(activeTag)) return false;
+          if (activeTag) {
+            var itemTagsLower = (item.tags || []).map(function(t) { return t.toLowerCase(); });
+            if (itemTagsLower.indexOf(activeTag) === -1) return false;
+          }
           if (q) return (item.title + ' ' + item.shortSummary).toLowerCase().indexOf(q) !== -1;
           return true;
         });
@@ -793,27 +804,43 @@ function buildLibraryPage(webAppUrl) {
         }
 
         document.getElementById('grid').innerHTML = visible.map(function(item) {
-          var date   = item.date ? new Date(item.date).toLocaleDateString() : '';
-          var color  = BADGE_COLORS[item.sourceType] || '#888';
-          var pills  = (item.tags || []).map(function(t) {
-            return '<span class="tag-pill">' + esc(t) + '</span>';
-          }).join('');
-          var docBtn = item.docLink
-            ? '<a class="doc-link" href="' + esc(item.docLink) + '" target="_blank">View in Doc →</a>'
-            : '';
-          return '<div class="card">'
-            + '<div class="card-meta">'
-            + '<span class="badge" style="background:' + color + '">' + esc(item.sourceType) + '</span>'
-            + date
+          var date  = item.date ? new Date(item.date).toLocaleDateString() : '';
+          var color = BADGE_COLORS[item.sourceType] || '#888';
+          var pills = (item.tags || [])
+            .filter(function(t) { return configuredTags.indexOf(t.toLowerCase()) !== -1; })
+            .map(function(t) { return '<span class="tag-pill">' + esc(t) + '</span>'; })
+            .join('');
+          return '<div class="card" id="card-' + esc(item.id) + '">'
+            + '<div class="card-meta" style="display:flex;justify-content:space-between;align-items:center;">'
+            + '<span><span class="badge" style="background:' + color + '">' + esc(item.sourceType) + '</span>' + date + '</span>'
+            + '<button onclick="removeCard(' + JSON.stringify(item.id) + ', this)" title="Remove from library" '
+            + 'style="background:none;border:none;cursor:pointer;color:#ccc;font-size:16px;padding:0 2px;line-height:1;" '
+            + 'onmouseover="this.style.color=\'#e53935\'" onmouseout="this.style.color=\'#ccc\'">×</button>'
             + '</div>'
             + '<p class="card-title"><a href="' + esc(item.url) + '" target="_blank">' + esc(item.title) + '</a></p>'
             + '<p class="card-summary">' + esc(item.shortSummary) + '</p>'
             + '<div class="card-footer">'
             + '<div class="card-tags">' + pills + '</div>'
-            + docBtn
+            + '<a class="doc-link" href="' + esc(item.docLink) + '" target="_blank">View in Doc →</a>'
             + '</div>'
             + '</div>';
         }).join('');
+      }
+
+      function removeCard(itemId, btn) {
+        if (!confirm('Remove this item from the library?')) return;
+        btn.disabled = true;
+        google.script.run
+          .withSuccessHandler(function() {
+            allItems = allItems.filter(function(i) { return i.id !== itemId; });
+            buildTagSidebar();
+            renderGrid();
+          })
+          .withFailureHandler(function(err) {
+            btn.disabled = false;
+            alert('Error: ' + err.message);
+          })
+          .removeFromLibrary(itemId);
       }
 
       function esc(s) {
