@@ -108,3 +108,79 @@ function addItemToLibrary(item, summary, selectedTags, docLink) {
 function getLibraryIndexJson() {
   return readLibraryIndex();
 }
+
+/**
+ * Backfills the library index from all Saved rows in the Archive and Inbox tabs.
+ * Safe to run multiple times — existing index entries are replaced, not duplicated.
+ * Run this once manually from the Apps Script editor after deploying the library feature.
+ *
+ * Logs a summary of how many items were indexed and how many were skipped
+ * (e.g. rows with no tags, which were saved before tag selection existed).
+ */
+function backfillLibraryIndex() {
+  const archiveSheet = getSheet(TABS.ARCHIVE);
+  const inboxSheet   = getSheet(TABS.INBOX);
+
+  const archiveRows = archiveSheet.getDataRange().getValues().slice(1); // skip header
+  const inboxRows   = inboxSheet.getDataRange().getValues().slice(1);
+
+  // Collect all Saved rows from both tabs
+  const savedRows = [
+    ...archiveRows,
+    ...inboxRows.filter(row => row[COL.STATUS - 1] === STATUS.SAVED),
+  ];
+
+  Logger.log(`Library backfill: found ${savedRows.length} saved row(s) across Archive + Inbox`);
+
+  const items   = [];
+  let   skipped = 0;
+
+  savedRows.forEach(row => {
+    const tagsRaw = String(row[COL.TAGS - 1] || '').trim();
+    if (!tagsRaw) {
+      // Skip rows with no tags — they can't be usefully grouped in the library
+      skipped++;
+      return;
+    }
+
+    const tags   = tagsRaw.split(',').map(t => t.trim()).filter(t => t);
+    const itemId = String(row[COL.ITEM_ID - 1] || '');
+
+    // Parse shortSummary from stored JSON; fall back to first 300 chars of full summary
+    let shortSummary = '';
+    const jsonRaw = row[COL.SUMMARY_JSON - 1];
+    if (jsonRaw) {
+      try {
+        const parsed = JSON.parse(jsonRaw);
+        shortSummary = parsed.shortSummary || '';
+      } catch (_) {}
+    }
+    if (!shortSummary) {
+      shortSummary = String(row[COL.SUMMARY - 1] || '').slice(0, 300);
+    }
+
+    items.push({
+      id:           itemId,
+      title:        String(row[COL.TITLE       - 1] || ''),
+      url:          String(row[COL.URL         - 1] || ''),
+      date:         new Date(row[COL.DATE_ADDED - 1]).toISOString(),
+      sourceType:   String(row[COL.SOURCE_TYPE - 1] || ''),
+      shortSummary,
+      docLink:      String(row[COL.DOC_LINK    - 1] || ''),
+      tags,
+    });
+  });
+
+  // Deduplicate by itemId (Archive + Inbox could theoretically have the same row)
+  const seen  = new Set();
+  const deduped = items.filter(item => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+
+  const index = { lastUpdated: new Date().toISOString(), items: deduped };
+  writeLibraryIndex(index);
+
+  Logger.log(`Library backfill: indexed ${deduped.length} item(s), skipped ${skipped} (no tags)`);
+}
