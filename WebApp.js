@@ -577,7 +577,7 @@ function buildInboxPage(items, webAppUrl) {
   </head>
   <body>
     <h1>PKM Inbox</h1>
-    <p class="subtitle">${items.length} pending item${items.length !== 1 ? 's' : ''} &nbsp;·&nbsp; <a href="${webAppUrl}?action=library" style="color:#1a73e8;text-decoration:none;">Library →</a></p>
+    <p class="subtitle">${items.length} pending item${items.length !== 1 ? 's' : ''} &nbsp;·&nbsp; <a href="${webAppUrl}?action=library" style="color:#1a73e8;text-decoration:none;" target="_top">Library →</a></p>
     ${cards}
   </body>
 </html>`;
