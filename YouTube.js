@@ -23,7 +23,12 @@ function runYouTubePipeline() {
     const newItems = fetchPlaylistVideos(id);
     Logger.log(`YouTube: ${newItems.length} new video(s) from playlist ${id}`);
 
-    newItems.forEach(item => {
+    const batch = newItems.slice(0, YOUTUBE_BATCH_SIZE);
+    if (newItems.length > YOUTUBE_BATCH_SIZE) {
+      Logger.log(`YouTube: processing ${batch.length} of ${newItems.length} (batch limit ${YOUTUBE_BATCH_SIZE})`);
+    }
+
+    batch.forEach(item => {
       try {
         const summary = summarizeItem(item);
         addItemToInbox(item, summary);

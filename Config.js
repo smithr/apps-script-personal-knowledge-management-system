@@ -1,5 +1,9 @@
 const DEBUG = false; // Set to true to re-process all items (bypasses deduplication)
 
+// Maximum number of YouTube videos to summarize per pipeline run.
+// Keeps individual executions well within the 6-minute Apps Script time limit.
+const YOUTUBE_BATCH_SIZE = 3;
+
 // ─── Script Property Keys ───────────────────────────────────────────────────
 const PROP = {
   GEMINI_API_KEY:       'GEMINI_API_KEY',
