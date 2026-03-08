@@ -42,6 +42,10 @@ function doGet(e) {
     return handleCaptureLoad(params);
   }
 
+  if (action === 'library') {
+    return handleLibraryView();
+  }
+
   if (!itemId || !action) {
     return buildConfirmationPage('Invalid request — missing id or action parameter.');
   }
@@ -573,7 +577,7 @@ function buildInboxPage(items, webAppUrl) {
   </head>
   <body>
     <h1>PKM Inbox</h1>
-    <p class="subtitle">${items.length} pending item${items.length !== 1 ? 's' : ''}</p>
+    <p class="subtitle">${items.length} pending item${items.length !== 1 ? 's' : ''} &nbsp;·&nbsp; <a href="${webAppUrl}?action=library" style="color:#1a73e8;text-decoration:none;">Library →</a></p>
     ${cards}
   </body>
 </html>`;
@@ -621,6 +625,204 @@ function buildInboxItemCard(item, webAppUrl) {
         ${isFetchFailureItem(item) ? `<a href="${webAppUrl}?id=${encodeURIComponent(item.itemId)}&action=provide" class="btn" style="background:#f1f3f4;color:#444;" target="_top">Provide Content</a>` : ''}
       </div>
     </div>`;
+}
+
+// ─── Library View ─────────────────────────────────────────────────────────────
+
+/**
+ * Serves the PKM Library page. Data is loaded client-side via
+ * google.script.run.getLibraryIndexJson() so the page renders quickly
+ * and all filtering happens in the browser.
+ *
+ * @returns {GoogleAppsScript.HTML.HtmlOutput}
+ */
+function handleLibraryView() {
+  const webAppUrl = getProperty(PROP.WEBAPP_URL);
+  return HtmlService.createHtmlOutput(buildLibraryPage(webAppUrl))
+    .setTitle('PKM Library')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+}
+
+/**
+ * Builds the full library page HTML shell.
+ * Tag sidebar + card grid; data loaded and rendered client-side.
+ *
+ * @param {string} webAppUrl
+ * @returns {string}
+ */
+function buildLibraryPage(webAppUrl) {
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PKM Library</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { font-family: sans-serif; margin: 0; background: #f8f9fa; color: #222; }
+      .layout { display: flex; min-height: 100vh; }
+      .sidebar {
+        width: 200px; flex-shrink: 0;
+        background: white; border-right: 1px solid #e0e0e0;
+        padding: 20px 12px; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+      }
+      .sidebar h3 {
+        font-size: 11px; text-transform: uppercase; color: #aaa;
+        letter-spacing: 0.8px; margin: 0 0 10px; padding: 0 8px;
+      }
+      .tag-btn {
+        display: block; width: 100%; text-align: left;
+        padding: 6px 8px; border-radius: 4px; border: none; background: none;
+        font-size: 13px; cursor: pointer; color: #444; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis;
+      }
+      .tag-btn:hover { background: #f1f3f4; }
+      .tag-btn.active { background: #e8f0fe; color: #1a73e8; font-weight: 600; }
+      .main { flex: 1; padding: 24px; min-width: 0; }
+      .top-bar { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+      .top-bar h1 { font-size: 20px; margin: 0; }
+      .top-bar a { font-size: 13px; color: #1a73e8; text-decoration: none; margin-left: auto; }
+      input[type=search] {
+        flex: 1; max-width: 360px; min-width: 160px;
+        padding: 7px 14px; border: 1px solid #ddd; border-radius: 20px;
+        font-size: 14px; outline: none; background: white;
+      }
+      input[type=search]:focus { border-color: #1a73e8; }
+      .count { font-size: 13px; color: #888; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+      .card {
+        background: white; border: 1px solid #e0e0e0; border-radius: 6px;
+        padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+      }
+      .card-meta { font-size: 11px; color: #aaa; }
+      .card-title { font-size: 14px; font-weight: 600; margin: 0; line-height: 1.3; }
+      .card-title a { color: #1a0dab; text-decoration: none; }
+      .card-title a:hover { text-decoration: underline; }
+      .card-summary { font-size: 12px; color: #555; line-height: 1.5; margin: 0; flex: 1; }
+      .card-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px; }
+      .card-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+      .tag-pill {
+        font-size: 11px; background: #f1f3f4; color: #555;
+        border-radius: 10px; padding: 2px 8px;
+      }
+      .doc-link { font-size: 12px; color: #1a73e8; text-decoration: none; white-space: nowrap; }
+      .doc-link:hover { text-decoration: underline; }
+      .empty { color: #888; text-align: center; padding: 60px 0; grid-column: 1/-1; }
+      .loading { color: #888; text-align: center; padding: 60px 0; }
+      .badge {
+        display: inline-block; font-size: 10px; font-weight: bold;
+        padding: 1px 6px; border-radius: 3px; text-transform: uppercase;
+        letter-spacing: 0.5px; color: white; vertical-align: middle;
+        margin-right: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="sidebar">
+        <h3>Tags</h3>
+        <button class="tag-btn active" onclick="filterTag(null, this)">All</button>
+        <div id="tagList"></div>
+      </nav>
+      <main class="main">
+        <div class="top-bar">
+          <h1>PKM Library</h1>
+          <input type="search" id="searchBox" placeholder="Search titles and summaries…" oninput="renderGrid()">
+          <span class="count" id="countLabel"></span>
+          <a href="${webAppUrl}" target="_top">← Inbox</a>
+        </div>
+        <div id="status" class="loading">Loading library…</div>
+        <div class="grid" id="grid"></div>
+      </main>
+    </div>
+    <script>
+      var allItems  = [];
+      var activeTag = null;
+
+      var BADGE_COLORS = {
+        'YouTube': '#FF0000',
+        'Gmail':   '#EA4335',
+        'Tasks':   '#1A73E8',
+        'Capture': '#00897B',
+      };
+
+      google.script.run
+        .withSuccessHandler(function(index) {
+          allItems = (index.items || []).slice().reverse(); // newest first
+          buildTagSidebar();
+          renderGrid();
+          document.getElementById('status').style.display = 'none';
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('status').textContent = 'Failed to load library: ' + err.message;
+        })
+        .getLibraryIndexJson();
+
+      function buildTagSidebar() {
+        var counts = {};
+        allItems.forEach(function(item) {
+          (item.tags || []).forEach(function(t) { counts[t] = (counts[t] || 0) + 1; });
+        });
+        document.getElementById('tagList').innerHTML = Object.keys(counts).sort().map(function(t) {
+          return '<button class="tag-btn" onclick="filterTag(' + JSON.stringify(t) + ', this)">'
+               + esc(t) + ' <span style="color:#bbb;font-weight:400;">(' + counts[t] + ')</span></button>';
+        }).join('');
+      }
+
+      function filterTag(tag, btn) {
+        activeTag = tag;
+        document.querySelectorAll('.tag-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        renderGrid();
+      }
+
+      function renderGrid() {
+        var q = document.getElementById('searchBox').value.trim().toLowerCase();
+        var visible = allItems.filter(function(item) {
+          if (activeTag && !(item.tags || []).includes(activeTag)) return false;
+          if (q) return (item.title + ' ' + item.shortSummary).toLowerCase().indexOf(q) !== -1;
+          return true;
+        });
+
+        document.getElementById('countLabel').textContent =
+          visible.length + ' item' + (visible.length !== 1 ? 's' : '');
+
+        if (visible.length === 0) {
+          document.getElementById('grid').innerHTML = '<p class="empty">No items match.</p>';
+          return;
+        }
+
+        document.getElementById('grid').innerHTML = visible.map(function(item) {
+          var date   = item.date ? new Date(item.date).toLocaleDateString() : '';
+          var color  = BADGE_COLORS[item.sourceType] || '#888';
+          var pills  = (item.tags || []).map(function(t) {
+            return '<span class="tag-pill">' + esc(t) + '</span>';
+          }).join('');
+          var docBtn = item.docLink
+            ? '<a class="doc-link" href="' + esc(item.docLink) + '" target="_blank">View in Doc →</a>'
+            : '';
+          return '<div class="card">'
+            + '<div class="card-meta">'
+            + '<span class="badge" style="background:' + color + '">' + esc(item.sourceType) + '</span>'
+            + date
+            + '</div>'
+            + '<p class="card-title"><a href="' + esc(item.url) + '" target="_blank">' + esc(item.title) + '</a></p>'
+            + '<p class="card-summary">' + esc(item.shortSummary) + '</p>'
+            + '<div class="card-footer">'
+            + '<div class="card-tags">' + pills + '</div>'
+            + docBtn
+            + '</div>'
+            + '</div>';
+        }).join('');
+      }
+
+      function esc(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+          .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+    </script>
+  </body>
+</html>`;
 }
 
 // ─── Save / Dismiss Handlers ──────────────────────────────────────────────────
@@ -760,6 +962,7 @@ function handleSaveConfirm(itemId, item, selectedTags) {
 
     const docLink = saveItemToDoc(item, summary, selectedTags);
     updateDocLink(itemId, docLink);
+    addItemToLibrary(item, summary, selectedTags, docLink);
     updateItemStatus(itemId, STATUS.SAVED);
 
     const tagList  = selectedTags.map(escapeHtml).join(', ');
