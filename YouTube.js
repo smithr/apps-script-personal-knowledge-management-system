@@ -95,3 +95,46 @@ function removeFromPlaylist(playlistItemId, title) {
     Logger.log(`YouTube: failed to remove "${title}" from playlist — ${e.message}`);
   }
 }
+
+/**
+ * One-time cleanup: removes any playlist videos that have already been
+ * processed (i.e. their videoId is in PROCESSED_IDS) but were never
+ * removed because the removal feature didn't exist when they were summarized.
+ *
+ * Run this manually once from the Apps Script editor. After it completes,
+ * the ongoing pipeline will keep the playlist clean automatically.
+ */
+function cleanupPlaylist() {
+  const playlistId  = getProperty(PROP.YOUTUBE_PLAYLIST_ID);
+  let   pageToken   = null;
+  let   removed     = 0;
+  let   skipped     = 0;
+
+  do {
+    const response = YouTube.PlaylistItems.list('snippet', {
+      playlistId,
+      maxResults: 50,
+      pageToken,
+    });
+
+    (response.items || []).forEach(item => {
+      if (!item.snippet?.resourceId) return;
+      if (item.snippet.resourceId.kind !== 'youtube#video') return;
+
+      const videoId = item.snippet.resourceId.videoId;
+      const title   = item.snippet.title;
+
+      if (isProcessed(videoId)) {
+        removeFromPlaylist(item.id, title);
+        removed++;
+      } else {
+        Logger.log(`cleanupPlaylist: skipping unprocessed video "${title}" — will be summarized on next run`);
+        skipped++;
+      }
+    });
+
+    pageToken = response.nextPageToken;
+  } while (pageToken);
+
+  Logger.log(`cleanupPlaylist: done — removed ${removed}, left ${skipped} unprocessed video(s)`);
+}
