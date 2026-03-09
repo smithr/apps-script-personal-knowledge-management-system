@@ -14,18 +14,26 @@ function runTasksPipeline() {
   const newItems   = fetchPendingTasks(taskListId);
   Logger.log(`Tasks: ${newItems.length} new task(s) found`);
 
-  newItems.forEach(item => {
-    try {
-      const summary = summarizeItem(item);
-      addItemToInbox(item, summary);
-      completeTask(taskListId, item.rawMetadata.taskId);
-    } catch (e) {
-      Logger.log(`Tasks: failed to process "${item.title}" — skipping. Error: ${e.message}`);
-    } finally {
-      // Always mark as processed to prevent infinite retries on persistent failures
+  try {
+    newItems.forEach(item => {
+      try {
+        const summary = summarizeItem(item);
+        addItemToInbox(item, summary);
+        completeTask(taskListId, item.rawMetadata.taskId);
+      } catch (e) {
+        if (e.message.startsWith('RATE_LIMIT:')) throw e; // bubble up; do not mark as processed
+        Logger.log(`Tasks: failed to process "${item.title}" — skipping. Error: ${e.message}`);
+      }
+      // Only reached when no rate limit error — marks processed to prevent infinite retries
       addProcessedId(item.rawMetadata.taskId);
+    });
+  } catch (e) {
+    if (e.message.startsWith('RATE_LIMIT:')) {
+      sendRateLimitNotification('Tasks');
+      return;
     }
-  });
+    throw e;
+  }
 }
 
 /**

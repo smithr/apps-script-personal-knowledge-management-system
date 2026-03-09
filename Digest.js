@@ -7,6 +7,24 @@
  */
 
 /**
+ * Sends a one-line notification email when a pipeline is halted by a
+ * Gemini rate limit. The affected items remain unprocessed and will be
+ * retried on the next pipeline run.
+ *
+ * @param {string} source - Pipeline name (e.g. 'YouTube', 'Gmail', 'Tasks')
+ */
+function sendRateLimitNotification(source) {
+  const recipient = getProperty(PROP.DIGEST_EMAIL);
+  MailApp.sendEmail({
+    to:       recipient,
+    subject:  `PKM: Gemini rate limit hit — ${source} pipeline halted`,
+    htmlBody: `<p style="font-family:sans-serif;">The <strong>${escapeHtml(source)}</strong> pipeline was halted because the Gemini API returned HTTP 429 (rate limit exceeded).</p>
+               <p style="font-family:sans-serif;">Unprocessed items were not marked as done and will be retried on the next scheduled run.</p>`,
+  });
+  Logger.log(`Rate limit notification sent for ${source} pipeline`);
+}
+
+/**
  * Main trigger function.
  * Queries pending unsent items, composes a digest email, sends it,
  * then marks all included items as digest-sent.

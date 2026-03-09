@@ -12,17 +12,25 @@ function runGmailPipeline() {
   const newItems = fetchLabeledMessages();
   Logger.log(`Gmail: ${newItems.length} new message(s) found`);
 
-  newItems.forEach(item => {
-    try {
-      const summary = summarizeItem(item);
-      addItemToInbox(item, summary);
-    } catch (e) {
-      Logger.log(`Gmail: failed to process "${item.title}" — skipping. Error: ${e.message}`);
-    } finally {
-      // Always mark as processed to prevent infinite retries on persistent failures
+  try {
+    newItems.forEach(item => {
+      try {
+        const summary = summarizeItem(item);
+        addItemToInbox(item, summary);
+      } catch (e) {
+        if (e.message.startsWith('RATE_LIMIT:')) throw e; // bubble up; do not mark as processed
+        Logger.log(`Gmail: failed to process "${item.title}" — skipping. Error: ${e.message}`);
+      }
+      // Only reached when no rate limit error — marks processed to prevent infinite retries
       addProcessedId(item.rawMetadata.threadId);
+    });
+  } catch (e) {
+    if (e.message.startsWith('RATE_LIMIT:')) {
+      sendRateLimitNotification('Gmail');
+      return;
     }
-  });
+    throw e;
+  }
 }
 
 /**

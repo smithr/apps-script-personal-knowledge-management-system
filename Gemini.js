@@ -182,6 +182,11 @@ function summarizeItem(item) {
   };
 
   const response     = UrlFetchApp.fetch(endpoint, options);
+
+  if (response.getResponseCode() === 429) {
+    throw new Error(`RATE_LIMIT: Gemini API rate limit exceeded (HTTP 429). Pipeline halted.`);
+  }
+
   const jsonResponse = JSON.parse(response.getContentText());
 
   if (!jsonResponse.candidates || !jsonResponse.candidates[0]) {

@@ -19,27 +19,35 @@ function runYouTubePipeline() {
   const playlistId = getProperty(PROP.YOUTUBE_PLAYLIST_ID);
   const playlistIds = [playlistId]; // extend to .split(',').map(s => s.trim()) for multi-playlist
 
-  playlistIds.forEach(id => {
-    const newItems = fetchPlaylistVideos(id);
-    Logger.log(`YouTube: ${newItems.length} new video(s) from playlist ${id}`);
+  try {
+    playlistIds.forEach(id => {
+      const newItems = fetchPlaylistVideos(id);
+      Logger.log(`YouTube: ${newItems.length} new video(s) from playlist ${id}`);
 
-    const batch = newItems.slice(0, YOUTUBE_BATCH_SIZE);
-    if (newItems.length > YOUTUBE_BATCH_SIZE) {
-      Logger.log(`YouTube: processing ${batch.length} of ${newItems.length} (batch limit ${YOUTUBE_BATCH_SIZE})`);
-    }
-
-    batch.forEach(item => {
-      try {
-        const summary = summarizeItem(item);
-        addItemToInbox(item, summary);
-      } catch (e) {
-        Logger.log(`YouTube: failed to process "${item.title}" — skipping. Error: ${e.message}`);
-      } finally {
-        // Always mark as processed to prevent infinite retries on persistent failures
-        addProcessedId(item.rawMetadata.videoId);
+      const batch = newItems.slice(0, YOUTUBE_BATCH_SIZE);
+      if (newItems.length > YOUTUBE_BATCH_SIZE) {
+        Logger.log(`YouTube: processing ${batch.length} of ${newItems.length} (batch limit ${YOUTUBE_BATCH_SIZE})`);
       }
+
+      batch.forEach(item => {
+        try {
+          const summary = summarizeItem(item);
+          addItemToInbox(item, summary);
+        } catch (e) {
+          if (e.message.startsWith('RATE_LIMIT:')) throw e; // bubble up; do not mark as processed
+          Logger.log(`YouTube: failed to process "${item.title}" — skipping. Error: ${e.message}`);
+        }
+        // Only reached when no rate limit error — marks processed to prevent infinite retries
+        addProcessedId(item.rawMetadata.videoId);
+      });
     });
-  });
+  } catch (e) {
+    if (e.message.startsWith('RATE_LIMIT:')) {
+      sendRateLimitNotification('YouTube');
+      return;
+    }
+    throw e;
+  }
 }
 
 /**
