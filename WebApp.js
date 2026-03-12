@@ -218,7 +218,7 @@ function handleCaptureLoad(params) {
   </head>
   <body>
     <h1>Capture to PKM</h1>
-    <p class="subtitle">Review and edit before adding to your inbox.</p>
+    <p class="subtitle">Paste a URL to fetch and summarize it, or include the article text for paywalled pages.</p>
     <label for="title">Title</label>
     <input type="text" id="title" value="${escapeHtml(title)}">
     <label for="url">URL</label>
@@ -236,9 +236,9 @@ function handleCaptureLoad(params) {
         var title   = document.getElementById('title').value.trim();
         var url     = document.getElementById('url').value.trim();
         var content = document.getElementById('content').value.trim();
-        if (!content) { alert('Content is required.'); return; }
+        if (!url) { alert('URL is required.'); return; }
         btn.disabled    = true;
-        btn.textContent = 'Adding\u2026';
+        btn.textContent = content ? 'Adding\u2026' : 'Fetching\u2026';
         google.script.run
           .withSuccessHandler(function(msg) {
             document.body.innerHTML =
@@ -272,7 +272,15 @@ function handleCaptureLoad(params) {
  * @returns {string} Success message HTML
  */
 function captureConfirmFromClient(title, url, content) {
-  if (!content) return 'No content provided — nothing was added.';
+  if (!url) return 'No URL provided — nothing was added.';
+
+  // If no content was pasted, attempt a server-side fetch.
+  if (!content) {
+    content = fetchUrlContent(url);
+    if (!content) {
+      return 'Could not fetch the URL automatically. Please paste the article text into the Content field and try again.';
+    }
+  }
 
   const item = normalizeItem({
     sourceType: SOURCE.CAPTURE,
@@ -577,7 +585,7 @@ function buildInboxPage(items, webAppUrl) {
   </head>
   <body>
     <h1>PKM Inbox</h1>
-    <p class="subtitle">${items.length} pending item${items.length !== 1 ? 's' : ''} &nbsp;·&nbsp; <a href="${webAppUrl}?action=library" style="color:#1a73e8;text-decoration:none;" target="_top">Library →</a></p>
+    <p class="subtitle">${items.length} pending item${items.length !== 1 ? 's' : ''} &nbsp;·&nbsp; <a href="${webAppUrl}?action=capture" style="color:#1a73e8;text-decoration:none;" target="_top">Add article →</a> &nbsp;·&nbsp; <a href="${webAppUrl}?action=library" style="color:#1a73e8;text-decoration:none;" target="_top">Library →</a></p>
     ${cards}
   </body>
 </html>`;
