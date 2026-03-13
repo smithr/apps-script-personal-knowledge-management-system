@@ -82,8 +82,11 @@ function getProcessedIds() {
 function addProcessedId(id) {
   const ids = getProcessedIds();
   ids.add(id);
-  // Keep the store from growing unboundedly — retain last 10,000 IDs
-  const trimmed = Array.from(ids).slice(-10000);
+  // Script Properties has a 9 KB per-value limit. At ~18 bytes per JSON-encoded
+  // ID, 500 entries ≈ 9 KB. This rolling window also covers ~5 days of heavy
+  // ingest before old IDs age out — sufficient since source items don't
+  // re-appear in feeds/labels after that window.
+  const trimmed = Array.from(ids).slice(-500);
   setProperty(PROP.PROCESSED_IDS, JSON.stringify(trimmed));
 }
 
