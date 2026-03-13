@@ -720,6 +720,12 @@ function buildLibraryPage(webAppUrl) {
         color: #ccc; font-size: 18px; line-height: 1; padding: 0 2px;
       }
       .remove-btn:hover { color: #e53935; }
+      .star-btn {
+        background: none; border: none; cursor: pointer;
+        color: #ccc; font-size: 18px; line-height: 1; padding: 0 2px;
+      }
+      .star-btn.starred { color: #f9a825; }
+      .star-btn:hover { color: #f9a825; }
       .empty { color: #888; text-align: center; padding: 60px 0; grid-column: 1/-1; }
       .loading { color: #888; text-align: center; padding: 60px 0; }
       .badge {
@@ -798,6 +804,43 @@ function buildLibraryPage(webAppUrl) {
         removeCard(btn.getAttribute('data-id'), btn);
       }
 
+      function handleStarClick(btn) {
+        toggleStar(btn.getAttribute('data-id'), btn);
+      }
+
+      function toggleStar(itemId, btn) {
+        btn.disabled = true;
+        google.script.run
+          .withSuccessHandler(function(starred) {
+            // Update allItems in place
+            allItems = allItems.map(function(i) {
+              if (i.id !== itemId) return i;
+              var tags = (i.tags || []).filter(function(t) { return t.toLowerCase() !== 'favorites'; });
+              if (starred) tags.unshift('favorites');
+              return Object.assign({}, i, { tags: tags });
+            });
+            // Keep configuredTags in sync so sidebar shows/hides "favorites"
+            if (starred && configuredTags.indexOf('favorites') === -1) {
+              configuredTags.unshift('favorites');
+            } else if (!starred) {
+              var stillHasFavorites = allItems.some(function(i) {
+                return (i.tags || []).some(function(t) { return t.toLowerCase() === 'favorites'; });
+              });
+              if (!stillHasFavorites) {
+                configuredTags = configuredTags.filter(function(t) { return t.toLowerCase() !== 'favorites'; });
+                if (activeTag === 'favorites') activeTag = null;
+              }
+            }
+            buildTagSidebar();
+            renderGrid();
+          })
+          .withFailureHandler(function(err) {
+            btn.disabled = false;
+            alert('Error: ' + err.message);
+          })
+          .toggleFavorite(itemId);
+      }
+
       function filterTag(tag, btn) {
         activeTag = tag;
         document.querySelectorAll('.tag-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -825,8 +868,9 @@ function buildLibraryPage(webAppUrl) {
         }
 
         document.getElementById('grid').innerHTML = visible.map(function(item) {
-          var date  = item.date ? new Date(item.date).toLocaleDateString() : '';
-          var color = BADGE_COLORS[item.sourceType] || '#888';
+          var date      = item.date ? new Date(item.date).toLocaleDateString() : '';
+          var color     = BADGE_COLORS[item.sourceType] || '#888';
+          var isStarred = (item.tags || []).some(function(t) { return t.toLowerCase() === 'favorites'; });
           var pills = (item.tags || [])
             .filter(function(t) { return configuredTags.indexOf(t.toLowerCase()) !== -1; })
             .map(function(t) { return '<span class="tag-pill">' + esc(t) + '</span>'; })
@@ -834,7 +878,10 @@ function buildLibraryPage(webAppUrl) {
           return '<div class="card" id="card-' + esc(item.id) + '">'
             + '<div class="card-meta" style="display:flex;justify-content:space-between;align-items:center;">'
             + '<span><span class="badge" style="background:' + color + '">' + esc(item.sourceType) + '</span>' + date + '</span>'
+            + '<span style="display:flex;align-items:center;gap:2px;">'
+            + '<button class="star-btn' + (isStarred ? ' starred' : '') + '" data-id="' + esc(item.id) + '" onclick="handleStarClick(this)" title="' + (isStarred ? 'Remove from favorites' : 'Add to favorites') + '">' + (isStarred ? '★' : '☆') + '</button>'
             + '<button class="remove-btn" data-id="' + esc(item.id) + '" onclick="handleRemoveClick(this)" title="Remove from library">×</button>'
+            + '</span>'
             + '</div>'
             + '<p class="card-title"><a href="' + esc(item.url) + '" target="_blank">' + esc(item.title) + '</a></p>'
             + '<p class="card-summary">' + esc(item.shortSummary) + '</p>'

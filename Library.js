@@ -102,14 +102,53 @@ function addItemToLibrary(item, summary, selectedTags, docLink) {
 /**
  * Returns the full library index plus the list of configured tags from the
  * Config sheet. The client uses configuredTags to filter the tag sidebar.
+ * "favorites" is injected automatically when any item carries that tag,
+ * so no Config sheet entry is needed for it.
  * Exposed to the client via google.script.run.getLibraryIndexJson().
  *
  * @returns {{ lastUpdated: string, items: Array, configuredTags: string[] }}
  */
 function getLibraryIndexJson() {
-  const index = readLibraryIndex();
-  index.configuredTags = getConfiguredTags();
+  const index         = readLibraryIndex();
+  const configuredTags = getConfiguredTags();
+  const hasFavorites  = (index.items || []).some(
+    item => (item.tags || []).some(t => t.toLowerCase() === 'favorites')
+  );
+  if (hasFavorites && !configuredTags.some(t => t.toLowerCase() === 'favorites')) {
+    configuredTags.unshift('favorites');
+  }
+  index.configuredTags = configuredTags;
   return index;
+}
+
+/**
+ * Toggles the "favorites" tag on a library item.
+ * Returns true if the item is now starred, false if it was unstarred.
+ * Called via google.script.run from the library card star button.
+ *
+ * @param {string} itemId - The item UUID
+ * @returns {boolean} New starred state
+ */
+function toggleFavorite(itemId) {
+  const index = readLibraryIndex();
+  const item  = (index.items || []).find(e => e.id === itemId);
+  if (!item) throw new Error(`Item not found: ${itemId}`);
+
+  const tags    = item.tags || [];
+  const favIdx  = tags.findIndex(t => t.toLowerCase() === 'favorites');
+  const starred = favIdx === -1;
+
+  if (starred) {
+    tags.unshift('favorites');
+  } else {
+    tags.splice(favIdx, 1);
+  }
+
+  item.tags         = tags;
+  index.lastUpdated = new Date().toISOString();
+  writeLibraryIndex(index);
+  Logger.log(`Library: ${starred ? 'starred' : 'unstarred'} item ${itemId}`);
+  return starred;
 }
 
 /**
