@@ -140,3 +140,22 @@ function removeProcessedId(id) {
 function reprocessItem() {
   removeProcessedId('REPLACE_ME');
 }
+
+/**
+ * Trims the PROCESSED_IDS store to the current 500-entry cap.
+ * Run once manually from the Apps Script editor if the store was allowed
+ * to grow beyond the cap before this limit was enforced in addProcessedId.
+ * Logs the before/after count so you can confirm the trim worked.
+ */
+function trimProcessedIds() {
+  const raw = PropertiesService.getScriptProperties().getProperty(PROP.PROCESSED_IDS);
+  if (!raw) {
+    Logger.log('trimProcessedIds: store is empty — nothing to do.');
+    return;
+  }
+  const ids    = JSON.parse(raw);
+  const before = ids.length;
+  const trimmed = ids.slice(-500);
+  setProperty(PROP.PROCESSED_IDS, JSON.stringify(trimmed));
+  Logger.log(`trimProcessedIds: ${before} → ${trimmed.length} entries (removed ${before - trimmed.length}).`);
+}
