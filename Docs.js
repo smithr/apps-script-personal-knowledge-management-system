@@ -167,72 +167,159 @@ function countEntriesInDoc(docId) {
 }
 
 /**
- * Appends a formatted knowledge entry to a Google Doc and increments the
- * cached entry count for that doc so the next save skips the folder scan.
+ * Appends a formatted knowledge entry to a Google Doc using the Docs REST API
+ * batchUpdate endpoint. All mutations are sent in two HTTP calls (one GET for
+ * the insertion point, one POST with all insertText + formatting requests)
+ * rather than ~15 sequential DocumentApp calls.
  *
  * Entry structure:
- *   [Title] — heading
- *   Source type | Date | Original URL
+ *   [Title] — HEADING_2
+ *   Source type · Date · URL — italic
  *   Full summary paragraph
- *   Key Terms list (omitted if empty)
- *   Key Points list (omitted if empty)
- *   Action Items list (omitted if empty)
+ *   Key Terms section + bullets (omitted if empty)
+ *   Key Points section + bullets (omitted if empty)
+ *   Action Items section + bullets (omitted if empty)
+ *   Separator paragraph with bottom border (replaces horizontal rule)
  *
  * @param {string} docId    - Google Doc file ID
  * @param {Object} item     - Normalized item
  * @param {Object} summary  - Structured summary
  * @param {string} cacheKey - Key returned by getOrCreateTopicDoc for count update
- * @returns {string} Deep link URL to the doc (section anchors not supported via API)
+ * @returns {string} Deep link URL to the doc
  */
 function appendSectionToDoc(docId, item, summary, cacheKey) {
-  const doc  = DocumentApp.openById(docId);
-  const body = doc.getBody();
+  const token   = ScriptApp.getOAuthToken();
+  const baseUrl = 'https://docs.googleapis.com/v1/documents/' + docId;
+  const auth    = { Authorization: 'Bearer ' + token };
 
-  // Heading
-  body.appendParagraph(item.title)
-      .setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  // ── Step 1: find the insertion point (just before the doc's final \n) ────────
+  const getRes = UrlFetchApp.fetch(baseUrl + '?fields=body.content.endIndex', {
+    headers: auth,
+    muteHttpExceptions: true,
+  });
+  if (getRes.getResponseCode() !== 200) {
+    throw new Error('Docs GET failed (' + getRes.getResponseCode() + '): ' + getRes.getContentText());
+  }
+  const bodyContent = JSON.parse(getRes.getContentText()).body.content;
+  const insertAt    = bodyContent[bodyContent.length - 1].endIndex - 1;
 
-  // Metadata line
-  const date       = new Date(item.dateAdded).toLocaleDateString();
-  const metaText   = `${item.sourceType}  ·  ${date}  ·  ${item.url}`;
-  body.appendParagraph(metaText)
-      .setItalic(true);
+  // ── Step 2: build segments (each becomes one \n-terminated paragraph) ────────
+  const metaText = item.sourceType + '  ·  '
+    + new Date(item.dateAdded).toLocaleDateString() + '  ·  ' + item.url;
 
-  // Full summary
-  body.appendParagraph(summary.fullSummary || '');
+  const segments = [];
+  segments.push({ text: item.title,              style: 'heading2'   });
+  segments.push({ text: metaText,                style: 'italic'     });
+  segments.push({ text: summary.fullSummary || '', style: 'normal'   });
 
-  // Key terms
   if (summary.keyTerms && summary.keyTerms.length > 0) {
-    body.appendParagraph('Key Terms').setHeading(DocumentApp.ParagraphHeading.HEADING3);
-    summary.keyTerms.forEach(term => {
-      body.appendListItem(term).setGlyphType(DocumentApp.GlyphType.BULLET);
-    });
+    segments.push({ text: 'Key Terms', style: 'heading3' });
+    summary.keyTerms.forEach(t => segments.push({ text: t, style: 'bullet' }));
   }
-
-  // Key points
   if (summary.keyPoints && summary.keyPoints.length > 0) {
-    body.appendParagraph('Key Points').setHeading(DocumentApp.ParagraphHeading.HEADING3);
-    summary.keyPoints.forEach(point => {
-      body.appendListItem(point)
-          .setGlyphType(DocumentApp.GlyphType.BULLET);
-    });
+    segments.push({ text: 'Key Points', style: 'heading3' });
+    summary.keyPoints.forEach(p => segments.push({ text: p, style: 'bullet' }));
   }
-
-  // Action items
   if (summary.actionItems && summary.actionItems.length > 0) {
-    body.appendParagraph('Action Items').setHeading(DocumentApp.ParagraphHeading.HEADING3);
-    summary.actionItems.forEach(action => {
-      body.appendListItem(action)
-          .setGlyphType(DocumentApp.GlyphType.BULLET);
-    });
+    segments.push({ text: 'Action Items', style: 'heading3' });
+    summary.actionItems.forEach(a => segments.push({ text: a, style: 'bullet' }));
+  }
+  segments.push({ text: '', style: 'separator' });
+
+  // ── Step 3: compute each segment's character range ───────────────────────────
+  // Each segment occupies [start, end) where end = start + text.length + 1 (\n).
+  let offset = insertAt;
+  segments.forEach(seg => {
+    seg.start = offset;
+    seg.end   = offset + seg.text.length + 1;
+    offset    = seg.end;
+  });
+
+  // ── Step 4: build all requests ────────────────────────────────────────────────
+  const requests = [{
+    insertText: {
+      location: { index: insertAt },
+      text: segments.map(s => s.text).join('\n') + '\n',
+    },
+  }];
+
+  segments.forEach(seg => {
+    switch (seg.style) {
+      case 'heading2':
+        requests.push({
+          updateParagraphStyle: {
+            range: { startIndex: seg.start, endIndex: seg.end },
+            paragraphStyle: { namedStyleType: 'HEADING_2' },
+            fields: 'namedStyleType',
+          },
+        });
+        break;
+
+      case 'heading3':
+        requests.push({
+          updateParagraphStyle: {
+            range: { startIndex: seg.start, endIndex: seg.end },
+            paragraphStyle: { namedStyleType: 'HEADING_3' },
+            fields: 'namedStyleType',
+          },
+        });
+        break;
+
+      case 'italic':
+        // Exclude the trailing \n from text styling
+        requests.push({
+          updateTextStyle: {
+            range: { startIndex: seg.start, endIndex: seg.end - 1 },
+            textStyle: { italic: true },
+            fields: 'italic',
+          },
+        });
+        break;
+
+      case 'bullet':
+        requests.push({
+          createParagraphBullets: {
+            range: { startIndex: seg.start, endIndex: seg.end },
+            bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+          },
+        });
+        break;
+
+      case 'separator':
+        // Bottom border approximates a horizontal rule (REST API has no insertHR)
+        requests.push({
+          updateParagraphStyle: {
+            range: { startIndex: seg.start, endIndex: seg.end },
+            paragraphStyle: {
+              borderBottom: {
+                color:     { color: { rgbColor: { red: 0.75, green: 0.75, blue: 0.75 } } },
+                dashStyle: 'SOLID',
+                padding:   { magnitude: 2, unit: 'PT' },
+                width:     { magnitude: 1, unit: 'PT' },
+              },
+              spaceAbove: { magnitude: 6, unit: 'PT' },
+              spaceBelow: { magnitude: 6, unit: 'PT' },
+            },
+            fields: 'borderBottom,spaceAbove,spaceBelow',
+          },
+        });
+        break;
+    }
+  });
+
+  // ── Step 5: send all mutations in one round trip ──────────────────────────────
+  const postRes = UrlFetchApp.fetch(baseUrl + ':batchUpdate', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: auth,
+    payload: JSON.stringify({ requests }),
+    muteHttpExceptions: true,
+  });
+  if (postRes.getResponseCode() !== 200) {
+    throw new Error('Docs batchUpdate failed (' + postRes.getResponseCode() + '): ' + postRes.getContentText());
   }
 
-  // Divider between entries
-  body.appendHorizontalRule();
-
-  doc.saveAndClose();
-
-  // Keep the cached count in sync so the next save skips countEntriesInDoc
+  // ── Step 6: keep cached entry count in sync ───────────────────────────────────
   if (cacheKey) {
     const cache = readTopicDocCache();
     if (cache[cacheKey]) {
@@ -241,7 +328,7 @@ function appendSectionToDoc(docId, item, summary, cacheKey) {
     }
   }
 
-  return `https://docs.google.com/document/d/${docId}/edit`;
+  return 'https://docs.google.com/document/d/' + docId + '/edit';
 }
 
 /**
