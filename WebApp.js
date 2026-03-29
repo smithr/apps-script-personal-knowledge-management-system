@@ -728,6 +728,16 @@ function buildLibraryPage(webAppUrl) {
       .star-btn:hover { color: #f9a825; }
       .empty { color: #888; text-align: center; padding: 60px 0; grid-column: 1/-1; }
       .loading { color: #888; text-align: center; padding: 60px 0; }
+      .pagination {
+        display: flex; align-items: center; justify-content: center;
+        gap: 12px; margin-top: 20px; font-size: 13px; color: #555;
+      }
+      .pagination button {
+        padding: 5px 14px; border: 1px solid #ddd; border-radius: 4px;
+        background: white; cursor: pointer; font-size: 13px;
+      }
+      .pagination button:disabled { opacity: 0.4; cursor: default; }
+      .pagination button:not(:disabled):hover { background: #f1f3f4; }
       .badge {
         display: inline-block; font-size: 10px; font-weight: bold;
         padding: 1px 6px; border-radius: 3px; text-transform: uppercase;
@@ -752,12 +762,15 @@ function buildLibraryPage(webAppUrl) {
         </div>
         <div id="status" class="loading">Loading library…</div>
         <div class="grid" id="grid"></div>
+        <div id="pagination"></div>
       </main>
     </div>
     <script>
       var allItems      = [];
       var configuredTags = [];
       var activeTag     = null;
+      var currentPage   = 0;
+      var PAGE_SIZE     = 48;
 
       var BADGE_COLORS = {
         'YouTube': '#FF0000',
@@ -832,7 +845,7 @@ function buildLibraryPage(webAppUrl) {
               }
             }
             buildTagSidebar();
-            renderGrid();
+            renderGrid(currentPage);
           })
           .withFailureHandler(function(err) {
             btn.disabled = false;
@@ -848,7 +861,8 @@ function buildLibraryPage(webAppUrl) {
         renderGrid();
       }
 
-      function renderGrid() {
+      function renderGrid(page) {
+        currentPage = (page === undefined) ? 0 : page;
         var q = document.getElementById('searchBox').value.trim().toLowerCase();
         var visible = allItems.filter(function(item) {
           if (activeTag) {
@@ -859,15 +873,21 @@ function buildLibraryPage(webAppUrl) {
           return true;
         });
 
+        var totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+        if (currentPage >= totalPages) currentPage = totalPages - 1;
+        var start = currentPage * PAGE_SIZE;
+        var pageItems = visible.slice(start, start + PAGE_SIZE);
+
         document.getElementById('countLabel').textContent =
           visible.length + ' item' + (visible.length !== 1 ? 's' : '');
 
         if (visible.length === 0) {
           document.getElementById('grid').innerHTML = '<p class="empty">No items match.</p>';
+          document.getElementById('pagination').innerHTML = '';
           return;
         }
 
-        document.getElementById('grid').innerHTML = visible.map(function(item) {
+        document.getElementById('grid').innerHTML = pageItems.map(function(item) {
           var date      = item.date ? new Date(item.date).toLocaleDateString() : '';
           var color     = BADGE_COLORS[item.sourceType] || '#888';
           var isStarred = (item.tags || []).some(function(t) { return t.toLowerCase() === 'favorites'; });
@@ -891,6 +911,21 @@ function buildLibraryPage(webAppUrl) {
             + '</div>'
             + '</div>';
         }).join('');
+
+        // Pagination controls
+        if (totalPages > 1) {
+          var pageInfo = 'Page ' + (currentPage + 1) + ' of ' + totalPages;
+          document.getElementById('pagination').innerHTML =
+            '<div class="pagination">'
+            + '<button onclick="renderGrid(' + (currentPage - 1) + ')" '
+            + (currentPage === 0 ? 'disabled' : '') + '>← Prev</button>'
+            + '<span>' + pageInfo + '</span>'
+            + '<button onclick="renderGrid(' + (currentPage + 1) + ')" '
+            + (currentPage >= totalPages - 1 ? 'disabled' : '') + '>Next →</button>'
+            + '</div>';
+        } else {
+          document.getElementById('pagination').innerHTML = '';
+        }
       }
 
       function removeCard(itemId, btn) {
