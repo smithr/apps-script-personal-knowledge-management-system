@@ -16,6 +16,7 @@ const PROP = {
   SHEET_ID:             'SHEET_ID',
   DRIVE_ROOT_FOLDER:    'DRIVE_ROOT_FOLDER_ID',
   PROCESSED_IDS:        'PROCESSED_IDS',         // JSON array, managed by system
+  LIBRARY_INDEX_FILE_ID: 'LIBRARY_INDEX_FILE_ID', // cached Drive file ID, managed by system
 };
 
 // ─── Sheet Tab Names ─────────────────────────────────────────────────────────

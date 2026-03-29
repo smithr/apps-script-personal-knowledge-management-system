@@ -25,16 +25,34 @@ const LIBRARY_INDEX_FILENAME = 'pkm-library-index.json';
 
 /**
  * Returns the Drive File for the library index, creating it if it doesn't exist.
+ * The file ID is cached in Script Properties after the first folder scan so that
+ * subsequent calls skip the Drive folder scan entirely.
  *
  * @returns {GoogleAppsScript.Drive.File}
  */
 function getOrCreateLibraryIndexFile() {
+  const props    = PropertiesService.getScriptProperties();
+  const cachedId = props.getProperty(PROP.LIBRARY_INDEX_FILE_ID);
+
+  if (cachedId) {
+    try {
+      return DriveApp.getFileById(cachedId);
+    } catch (e) {
+      // Stale cache (file deleted/moved) — fall through to folder scan
+      Logger.log(`Library: cached file ID invalid (${e.message}), rescanning folder`);
+    }
+  }
+
   const folder = DriveApp.getFolderById(getProperty(PROP.DRIVE_ROOT_FOLDER));
   const files  = folder.getFilesByName(LIBRARY_INDEX_FILENAME);
-  if (files.hasNext()) return files.next();
+  const file   = files.hasNext()
+    ? files.next()
+    : folder.createFile(LIBRARY_INDEX_FILENAME,
+        JSON.stringify({ lastUpdated: new Date().toISOString(), items: [] }),
+        MimeType.PLAIN_TEXT);
 
-  const empty = JSON.stringify({ lastUpdated: new Date().toISOString(), items: [] });
-  return folder.createFile(LIBRARY_INDEX_FILENAME, empty, MimeType.PLAIN_TEXT);
+  props.setProperty(PROP.LIBRARY_INDEX_FILE_ID, file.getId());
+  return file;
 }
 
 /**
