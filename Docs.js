@@ -44,8 +44,8 @@ function saveItemToDoc(item, summary, selectedTags) {
     }
     writtenGroups.add(dedupeKey);
 
-    const docFile = getOrCreateTopicDoc(group, folderId);
-    const docLink = appendSectionToDoc(docFile.getId(), item, summary);
+    const { file: docFile, cacheKey } = getOrCreateTopicDoc(group, folderId);
+    const docLink = appendSectionToDoc(docFile.getId(), item, summary, cacheKey);
 
     if (!primaryDocLink) primaryDocLink = docLink;
   });
@@ -54,25 +54,68 @@ function saveItemToDoc(item, summary, selectedTags) {
 }
 
 /**
- * Finds the current active quarterly Topic Doc for a tag.
- * Creates a new doc if none exists for the current quarter. If the current doc
- * has reached the 50-item rotation threshold, moves to the next rotation
- * (e.g. "ai - 2026-Q1" → "ai - 2026-Q1-2" → "ai - 2026-Q1-3").
+ * Reads the topic doc cache from Script Properties.
+ * Cache structure: { "docName::quarter": { id: string, count: number } }
  *
- * @param {string} tag      - Topic tag name (e.g. "ai-research")
+ * @returns {Object}
+ */
+function readTopicDocCache() {
+  const raw = PropertiesService.getScriptProperties().getProperty(PROP.TOPIC_DOC_CACHE);
+  try { return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; }
+}
+
+/**
+ * Writes the topic doc cache back to Script Properties.
+ *
+ * @param {Object} cache
+ */
+function writeTopicDocCache(cache) {
+  PropertiesService.getScriptProperties().setProperty(
+    PROP.TOPIC_DOC_CACHE, JSON.stringify(cache)
+  );
+}
+
+/**
+ * Finds the current active quarterly Topic Doc for a tag group.
+ * On a cache hit the folder scan and doc-open are skipped entirely.
+ * On a cache miss (new quarter, first save, or stale entry) falls back to
+ * the Drive folder scan, then updates the cache.
+ *
+ * Rotation logic: each doc holds up to 50 entries. When full, the next
+ * rotation slot is tried (e.g. "ai - 2026-Q1" → "ai - 2026-Q1-2").
+ *
+ * @param {string} docName  - Group/tag name used as the doc title prefix
  * @param {string} folderId - Drive folder ID for this topic
- * @returns {GoogleAppsScript.Drive.File}
+ * @returns {{ file: GoogleAppsScript.Drive.File, cacheKey: string }}
  */
 function getOrCreateTopicDoc(docName, folderId) {
-  const quarter = getCurrentQuarterLabel();
-  const folder  = DriveApp.getFolderById(folderId);
+  const quarter  = getCurrentQuarterLabel();
+  const cache    = readTopicDocCache();
 
-  // Walk rotation slots (1 = base name, 2+ = suffixed) until we find one
-  // that either doesn't exist yet (create it) or still has capacity.
+  // Walk rotation slots until we find one with capacity (cache-first).
   for (let rotation = 1; ; rotation++) {
-    const name  = rotation === 1
-      ? `${docName} - ${quarter}`
-      : `${docName} - ${quarter}-${rotation}`;
+    const name     = rotation === 1 ? `${docName} - ${quarter}` : `${docName} - ${quarter}-${rotation}`;
+    const cacheKey = `${docName}::${quarter}::${rotation}`;
+    const cached   = cache[cacheKey];
+
+    if (cached) {
+      if (cached.count < 50) {
+        // Verify the file still exists; fall through on stale ID
+        try {
+          const file = DriveApp.getFileById(cached.id);
+          return { file, cacheKey };
+        } catch (e) {
+          Logger.log(`Docs: stale cache for "${name}" — rescanning`);
+          delete cache[cacheKey];
+        }
+      } else {
+        Logger.log(`Docs: cache says "${name}" is full — checking next rotation`);
+        continue;
+      }
+    }
+
+    // Cache miss — scan the folder
+    const folder   = DriveApp.getFolderById(folderId);
     const existing = folder.getFilesByName(name);
 
     if (!existing.hasNext()) {
@@ -80,21 +123,30 @@ function getOrCreateTopicDoc(docName, folderId) {
       const newFile = DriveApp.getFileById(newDoc.getId());
       newFile.moveTo(folder);
       Logger.log(`Docs: created new doc "${name}"`);
-      return newFile;
+      cache[cacheKey] = { id: newFile.getId(), count: 0 };
+      writeTopicDocCache(cache);
+      return { file: newFile, cacheKey };
     }
 
     const docFile = existing.next();
-    if (countEntriesInDoc(docFile.getId()) < 50) {
-      return docFile;
+    const count   = countEntriesInDoc(docFile.getId());
+
+    if (count < 50) {
+      cache[cacheKey] = { id: docFile.getId(), count };
+      writeTopicDocCache(cache);
+      return { file: docFile, cacheKey };
     }
 
+    // Full — mark it so next iteration skips the scan too
+    cache[cacheKey] = { id: docFile.getId(), count };
+    writeTopicDocCache(cache);
     Logger.log(`Docs: "${name}" is full — checking next rotation`);
   }
 }
 
 /**
  * Counts the number of entries in a Topic Doc by counting HEADING2 paragraphs.
- * Each entry appended by appendSectionToDoc adds exactly one HEADING2.
+ * Only called on a cache miss; normal saves use the cached count.
  *
  * @param {string} docId
  * @returns {number}
@@ -115,7 +167,9 @@ function countEntriesInDoc(docId) {
 }
 
 /**
- * Appends a formatted knowledge entry to a Google Doc.
+ * Appends a formatted knowledge entry to a Google Doc and increments the
+ * cached entry count for that doc so the next save skips the folder scan.
+ *
  * Entry structure:
  *   [Title] — heading
  *   Source type | Date | Original URL
@@ -124,12 +178,13 @@ function countEntriesInDoc(docId) {
  *   Key Points list (omitted if empty)
  *   Action Items list (omitted if empty)
  *
- * @param {string} docId   - Google Doc file ID
- * @param {Object} item    - Normalized item
- * @param {Object} summary - Structured summary
+ * @param {string} docId    - Google Doc file ID
+ * @param {Object} item     - Normalized item
+ * @param {Object} summary  - Structured summary
+ * @param {string} cacheKey - Key returned by getOrCreateTopicDoc for count update
  * @returns {string} Deep link URL to the doc (section anchors not supported via API)
  */
-function appendSectionToDoc(docId, item, summary) {
+function appendSectionToDoc(docId, item, summary, cacheKey) {
   const doc  = DocumentApp.openById(docId);
   const body = doc.getBody();
 
@@ -176,6 +231,16 @@ function appendSectionToDoc(docId, item, summary) {
   body.appendHorizontalRule();
 
   doc.saveAndClose();
+
+  // Keep the cached count in sync so the next save skips countEntriesInDoc
+  if (cacheKey) {
+    const cache = readTopicDocCache();
+    if (cache[cacheKey]) {
+      cache[cacheKey].count += 1;
+      writeTopicDocCache(cache);
+    }
+  }
+
   return `https://docs.google.com/document/d/${docId}/edit`;
 }
 
