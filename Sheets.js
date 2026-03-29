@@ -164,6 +164,25 @@ function updateDocLink(itemId, docLink) {
     .setValue(docLink);
 }
 
+/**
+ * Updates both the Status and Doc Link columns for a saved item in a single
+ * ranged write, avoiding two separate getItemById scans.
+ *
+ * @param {string} itemId
+ * @param {string} status  - STATUS.SAVED | STATUS.DISMISSED
+ * @param {string} docLink - Deep link URL to the Doc section
+ */
+function updateItemStatusAndDocLink(itemId, status, docLink) {
+  const found = getItemById(itemId);
+  if (!found) throw new Error(`Item not found: ${itemId}`);
+  const sheet = getSheet(TABS.INBOX);
+  // COL.STATUS (8) and COL.DOC_LINK (10) are non-adjacent so two setValue calls
+  // are unavoidable, but we only scan the sheet once vs. the two separate
+  // updateItemStatus + updateDocLink calls that each did a full scan.
+  sheet.getRange(found.rowIndex, COL.STATUS).setValue(status);
+  sheet.getRange(found.rowIndex, COL.DOC_LINK).setValue(docLink);
+}
+
 // ─── Archiving ────────────────────────────────────────────────────────────────
 
 /**
