@@ -19,6 +19,7 @@ function runYouTubePipeline() {
   const playlistId = getProperty(PROP.YOUTUBE_PLAYLIST_ID);
   const playlistIds = [playlistId]; // extend to .split(',').map(s => s.trim()) for multi-playlist
 
+  const processedIds = [];
   try {
     playlistIds.forEach(id => {
       const newItems = fetchPlaylistVideos(id);
@@ -38,16 +39,18 @@ function runYouTubePipeline() {
           Logger.log(`YouTube: failed to process "${item.title}" — skipping. Error: ${e.message}`);
         }
         // Only reached when no rate limit error — marks processed to prevent infinite retries
-        addProcessedId(item.rawMetadata.videoId);
+        processedIds.push(item.rawMetadata.videoId);
       });
     });
   } catch (e) {
     if (e.message.startsWith('RATE_LIMIT:')) {
+      addProcessedIds(processedIds); // flush partial progress before exiting
       sendRateLimitNotification('YouTube');
       return;
     }
     throw e;
   }
+  addProcessedIds(processedIds);
 }
 
 /**

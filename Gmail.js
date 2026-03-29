@@ -12,6 +12,7 @@ function runGmailPipeline() {
   const newItems = fetchLabeledMessages();
   Logger.log(`Gmail: ${newItems.length} new message(s) found`);
 
+  const processedIds = [];
   try {
     newItems.forEach(item => {
       try {
@@ -22,15 +23,17 @@ function runGmailPipeline() {
         Logger.log(`Gmail: failed to process "${item.title}" — skipping. Error: ${e.message}`);
       }
       // Only reached when no rate limit error — marks processed to prevent infinite retries
-      addProcessedId(item.rawMetadata.threadId);
+      processedIds.push(item.rawMetadata.threadId);
     });
   } catch (e) {
     if (e.message.startsWith('RATE_LIMIT:')) {
+      addProcessedIds(processedIds); // flush partial progress before exiting
       sendRateLimitNotification('Gmail');
       return;
     }
     throw e;
   }
+  addProcessedIds(processedIds);
 }
 
 /**
