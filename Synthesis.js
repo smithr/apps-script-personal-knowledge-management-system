@@ -29,7 +29,7 @@ const SYNTHESIS_OUTPUT_SCHEMA = `{
  * @returns {Object[]} Array of { title, sourceType, tags, keyPoints }
  */
 function getSynthesisItems(days) {
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000); // rolling window, not calendar-week-aligned
   const result = [];
 
   [TABS.INBOX, TABS.ARCHIVE].forEach(tabName => {
@@ -56,6 +56,7 @@ function getSynthesisItems(days) {
       result.push({
         title:      String(row[COL.TITLE       - 1] || ''),
         sourceType: String(row[COL.SOURCE_TYPE - 1] || ''),
+        // Use summaryJson.tags (authoritative) over COL.TAGS (denormalized string, not updated post-ingest)
         tags:       Array.isArray(summaryJson.tags)      ? summaryJson.tags      : [],
         keyPoints:  Array.isArray(summaryJson.keyPoints) ? summaryJson.keyPoints : [],
       });
