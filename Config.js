@@ -18,6 +18,7 @@ const PROP = {
   PROCESSED_IDS:        'PROCESSED_IDS',         // JSON array, managed by system
   LIBRARY_INDEX_FILE_ID: 'LIBRARY_INDEX_FILE_ID', // cached Drive file ID, managed by system
   TOPIC_DOC_CACHE:       'TOPIC_DOC_CACHE',       // JSON map of docName::quarter → {id, count}, managed by system
+  SYNTHESIS_DOC_ID:      'SYNTHESIS_DOC_ID',      // cached ID of the Weekly Synthesis doc
 };
 
 // ─── Sheet Tab Names ─────────────────────────────────────────────────────────
