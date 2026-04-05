@@ -118,7 +118,7 @@ function callGeminiForSynthesis(prompt) {
   const payload = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
-      temperature:      0.3,
+      temperature:      0.3, // slightly higher than per-item summarization — encourages associative connections
       responseMimeType: 'application/json',
     },
   };
@@ -143,6 +143,10 @@ function callGeminiForSynthesis(prompt) {
     throw new Error('RATE_LIMIT: Gemini rate limit persisted after retry — synthesis aborted');
   }
 
+  const responseCode = response.getResponseCode();
+  if (responseCode !== 200) {
+    throw new Error(`Gemini API returned HTTP ${responseCode}: ${response.getContentText().slice(0, 200)}`);
+  }
   const jsonResponse = JSON.parse(response.getContentText());
   if (!jsonResponse.candidates || !jsonResponse.candidates[0]) {
     throw new Error(`Gemini API error: ${response.getContentText()}`);
@@ -171,7 +175,12 @@ function parseSynthesisJson(rawText) {
   if (start === -1 || end === -1 || end < start) {
     throw new Error('Gemini synthesis response contained no JSON object');
   }
-  const parsed = JSON.parse(rawText.slice(start, end + 1));
+  let parsed;
+  try {
+    parsed = JSON.parse(rawText.slice(start, end + 1));
+  } catch (e) {
+    throw new Error(`Synthesis: Gemini returned unparseable JSON — ${e.message}. Raw prefix: ${rawText.slice(0, 120)}`);
+  }
   return {
     themes:      Array.isArray(parsed.themes)      ? parsed.themes      : [],
     gaps:        Array.isArray(parsed.gaps)         ? parsed.gaps        : [],
