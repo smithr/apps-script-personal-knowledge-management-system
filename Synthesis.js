@@ -99,6 +99,87 @@ Here are the ${items.length} items captured this week:
 ${itemsText}`;
 }
 
+// ─── Gemini API ───────────────────────────────────────────────────────────────
+
+/**
+ * Sends the synthesis prompt to Gemini and returns parsed JSON.
+ * Retries once after SYNTHESIS_RATE_LIMIT_RETRY_DELAY_MS on HTTP 429.
+ * Throws on API error or unparseable response so the caller can exit cleanly.
+ *
+ * @param {string} prompt
+ * @returns {{ themes: string[], gaps: string[], connections: string[], questions: string[] }}
+ * @throws {Error} On API failure or unparseable JSON
+ */
+function callGeminiForSynthesis(prompt) {
+  const model    = getProperty(PROP.GEMINI_MODEL);
+  const apiKey   = getProperty(PROP.GEMINI_API_KEY);
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+  const payload = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature:      0.3,
+      responseMimeType: 'application/json',
+    },
+  };
+
+  const options = {
+    method:             'post',
+    contentType:        'application/json',
+    headers:            { 'x-goog-api-key': apiKey },
+    payload:            JSON.stringify(payload),
+    muteHttpExceptions: true,
+  };
+
+  let response = UrlFetchApp.fetch(endpoint, options);
+
+  if (response.getResponseCode() === 429) {
+    Logger.log(`Synthesis: Gemini rate limit hit — retrying after ${SYNTHESIS_RATE_LIMIT_RETRY_DELAY_MS}ms`);
+    Utilities.sleep(SYNTHESIS_RATE_LIMIT_RETRY_DELAY_MS);
+    response = UrlFetchApp.fetch(endpoint, options);
+  }
+
+  if (response.getResponseCode() === 429) {
+    throw new Error('RATE_LIMIT: Gemini rate limit persisted after retry — synthesis aborted');
+  }
+
+  const jsonResponse = JSON.parse(response.getContentText());
+  if (!jsonResponse.candidates || !jsonResponse.candidates[0]) {
+    throw new Error(`Gemini API error: ${response.getContentText()}`);
+  }
+
+  const usage = jsonResponse.usageMetadata;
+  if (usage) {
+    Logger.log(`Synthesis Gemini tokens — prompt: ${usage.promptTokenCount}, output: ${usage.candidatesTokenCount}, total: ${usage.totalTokenCount}`);
+  }
+
+  const rawText = jsonResponse.candidates[0].content.parts[0].text || '';
+  return parseSynthesisJson(rawText);
+}
+
+/**
+ * Parses Gemini's synthesis JSON response.
+ * Normalises each field to an array so callers never receive undefined.
+ *
+ * @param {string} rawText
+ * @returns {{ themes: string[], gaps: string[], connections: string[], questions: string[] }}
+ * @throws {Error} If no JSON object is found or JSON.parse fails
+ */
+function parseSynthesisJson(rawText) {
+  const start = rawText.indexOf('{');
+  const end   = rawText.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error('Gemini synthesis response contained no JSON object');
+  }
+  const parsed = JSON.parse(rawText.slice(start, end + 1));
+  return {
+    themes:      Array.isArray(parsed.themes)      ? parsed.themes      : [],
+    gaps:        Array.isArray(parsed.gaps)         ? parsed.gaps        : [],
+    connections: Array.isArray(parsed.connections)  ? parsed.connections : [],
+    questions:   Array.isArray(parsed.questions)    ? parsed.questions   : [],
+  };
+}
+
 // ─── Test Helpers (run manually from Apps Script editor) ──────────────────────
 
 /**
@@ -115,4 +196,23 @@ function testGetSynthesisItems() {
     Logger.log('--- Prompt preview (first 500 chars) ---');
     Logger.log(buildSynthesisPrompt(items).slice(0, 500));
   }
+}
+
+/**
+ * Calls Gemini with real item data and logs the parsed synthesis result.
+ * Run from the Apps Script editor to verify the Gemini integration end-to-end.
+ * Uses real quota — only run when you have items in the sheet.
+ */
+function testCallGeminiForSynthesis() {
+  const items = getSynthesisItems(7);
+  if (items.length < 3) {
+    Logger.log('testCallGeminiForSynthesis: fewer than 3 items — skipping (add test data or extend lookback)');
+    return;
+  }
+  const prompt    = buildSynthesisPrompt(items);
+  const synthesis = callGeminiForSynthesis(prompt);
+  Logger.log('Themes: ' + JSON.stringify(synthesis.themes, null, 2));
+  Logger.log('Gaps: '   + JSON.stringify(synthesis.gaps,   null, 2));
+  Logger.log('Connections: ' + JSON.stringify(synthesis.connections, null, 2));
+  Logger.log('Questions: '   + JSON.stringify(synthesis.questions,   null, 2));
 }
