@@ -189,6 +189,71 @@ function parseSynthesisJson(rawText) {
   };
 }
 
+// ─── Email Delivery ───────────────────────────────────────────────────────────
+
+/**
+ * Sends the weekly synthesis report as an HTML email to DIGEST_EMAIL.
+ *
+ * @param {{ themes: string[], gaps: string[], connections: string[], questions: string[] }} synthesis
+ * @param {number} itemCount  - Number of items that were synthesized
+ * @param {string} weekLabel  - ISO date string used as the report date (e.g. "2026-04-06")
+ */
+function sendSynthesisEmail(synthesis, itemCount, weekLabel) {
+  const recipient = getProperty(PROP.DIGEST_EMAIL);
+  const subject   = `PKM Weekly Synthesis — ${weekLabel}`;
+  const htmlBody  = buildSynthesisEmailHtml(synthesis, itemCount, weekLabel);
+  MailApp.sendEmail({ to: recipient, subject, htmlBody });
+  Logger.log(`Synthesis: email sent for week of ${weekLabel}`);
+}
+
+/**
+ * Builds the HTML body for the weekly synthesis email.
+ * All user-derived text (synthesis output) is escaped before interpolation.
+ *
+ * @param {{ themes: string[], gaps: string[], connections: string[], questions: string[] }} synthesis
+ * @param {number} itemCount
+ * @param {string} weekLabel
+ * @returns {string} Complete HTML email body
+ */
+function buildSynthesisEmailHtml(synthesis, itemCount, weekLabel) {
+  function renderList(items) {
+    if (!items || items.length === 0) {
+      return '<p style="color:#888;font-size:13px;margin:0 0 8px;">None identified.</p>';
+    }
+    return '<ul style="margin:0 0 8px;padding-left:20px;">'
+      + items.map(item =>
+          `<li style="margin-bottom:8px;line-height:1.5;">${escapeHtml(item)}</li>`
+        ).join('')
+      + '</ul>';
+  }
+
+  function section(title, color, items) {
+    return `
+      <div style="margin-bottom:24px;">
+        <h2 style="font-size:14px;color:${color};margin:0 0 8px;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(title)}</h2>
+        ${renderList(items)}
+      </div>`;
+  }
+
+  return `
+    <div style="font-family:sans-serif;max-width:640px;margin:0 auto;color:#222;">
+      <h1 style="font-size:20px;border-bottom:2px solid #eee;padding-bottom:8px;">
+        PKM Weekly Synthesis — ${escapeHtml(weekLabel)}
+      </h1>
+      <p style="color:#888;font-size:13px;margin-bottom:24px;">
+        Synthesized from ${itemCount} item${itemCount !== 1 ? 's' : ''} captured this week.
+      </p>
+      ${section('Themes & Patterns',  '#1a73e8', synthesis.themes)}
+      ${section('Knowledge Gaps',     '#e65100', synthesis.gaps)}
+      ${section('Connections',        '#0f9d58', synthesis.connections)}
+      ${section('Open Questions',     '#9334e6', synthesis.questions)}
+      <p style="color:#999;font-size:12px;margin-top:32px;">
+        Sent by your PKM system. This synthesis is also saved to your Weekly Synthesis doc in Drive.
+      </p>
+    </div>
+  `;
+}
+
 // ─── Test Helpers (run manually from Apps Script editor) ──────────────────────
 
 /**
@@ -224,4 +289,20 @@ function testCallGeminiForSynthesis() {
   Logger.log('Gaps: '   + JSON.stringify(synthesis.gaps,   null, 2));
   Logger.log('Connections: ' + JSON.stringify(synthesis.connections, null, 2));
   Logger.log('Questions: '   + JSON.stringify(synthesis.questions,   null, 2));
+}
+
+/**
+ * Sends a test synthesis email using real item data.
+ * Delivers to DIGEST_EMAIL — check your inbox after running.
+ */
+function testSendSynthesisEmail() {
+  const items = getSynthesisItems(7);
+  if (items.length < 3) {
+    Logger.log('testSendSynthesisEmail: fewer than 3 items — skipping');
+    return;
+  }
+  const weekLabel = new Date().toISOString().slice(0, 10);
+  const synthesis = callGeminiForSynthesis(buildSynthesisPrompt(items));
+  sendSynthesisEmail(synthesis, items.length, weekLabel);
+  Logger.log('testSendSynthesisEmail: email sent — check your inbox');
 }
