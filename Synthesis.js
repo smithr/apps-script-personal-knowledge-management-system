@@ -254,6 +254,182 @@ function buildSynthesisEmailHtml(synthesis, itemCount, weekLabel) {
   `;
 }
 
+// ─── Drive Doc ────────────────────────────────────────────────────────────────
+
+/**
+ * Returns the ID of the "Weekly Synthesis" Drive doc, creating it if needed.
+ * The doc is placed in the root PKM folder (DRIVE_ROOT_FOLDER_ID).
+ * The ID is cached in PROP.SYNTHESIS_DOC_ID to avoid repeated Drive scans.
+ *
+ * @returns {string} Google Doc file ID
+ */
+function getOrCreateSynthesisDoc() {
+  const cached = PropertiesService.getScriptProperties().getProperty(PROP.SYNTHESIS_DOC_ID);
+  if (cached) {
+    try {
+      DriveApp.getFileById(cached); // verify file still exists
+      return cached;
+    } catch (e) {
+      Logger.log('Synthesis: cached doc ID is stale — rescanning Drive');
+    }
+  }
+
+  const rootFolderId = getProperty(PROP.DRIVE_ROOT_FOLDER);
+  const folder       = DriveApp.getFolderById(rootFolderId);
+  const existing     = folder.getFilesByName('Weekly Synthesis');
+
+  if (existing.hasNext()) {
+    const file = existing.next();
+    setProperty(PROP.SYNTHESIS_DOC_ID, file.getId());
+    Logger.log(`Synthesis: found existing doc (${file.getId()})`);
+    return file.getId();
+  }
+
+  const newDoc  = DocumentApp.create('Weekly Synthesis');
+  const newFile = DriveApp.getFileById(newDoc.getId());
+  newFile.moveTo(folder);
+  setProperty(PROP.SYNTHESIS_DOC_ID, newFile.getId());
+  Logger.log(`Synthesis: created "Weekly Synthesis" doc (${newFile.getId()})`);
+  return newFile.getId();
+}
+
+/**
+ * Appends a weekly synthesis section to the "Weekly Synthesis" Drive doc using
+ * the Docs REST API batchUpdate endpoint (same pattern as appendSectionToDoc
+ * in Docs.js). All mutations are sent in two HTTP calls.
+ *
+ * Section structure:
+ *   Week of YYYY-MM-DD    — HEADING_2
+ *   Themes & Patterns     — HEADING_3 + bullets
+ *   Knowledge Gaps        — HEADING_3 + bullets
+ *   Connections           — HEADING_3 + bullets
+ *   Open Questions        — HEADING_3 + bullets
+ *   separator             — bottom-border paragraph
+ *
+ * Throws on HTTP error so the caller can degrade gracefully to email-only.
+ *
+ * @param {{ themes: string[], gaps: string[], connections: string[], questions: string[] }} synthesis
+ * @param {string} weekLabel - ISO date string (e.g. "2026-04-06")
+ */
+function appendSynthesisToDoc(synthesis, weekLabel) {
+  const docId   = getOrCreateSynthesisDoc();
+  const token   = ScriptApp.getOAuthToken();
+  const baseUrl = 'https://docs.googleapis.com/v1/documents/' + docId;
+  const auth    = { Authorization: 'Bearer ' + token };
+
+  // ── Step 1: find the insertion point ─────────────────────────────────────────
+  const getRes = UrlFetchApp.fetch(baseUrl + '?fields=body.content.endIndex', {
+    headers:            auth,
+    muteHttpExceptions: true,
+  });
+  if (getRes.getResponseCode() !== 200) {
+    throw new Error('Synthesis doc GET failed (' + getRes.getResponseCode() + '): ' + getRes.getContentText());
+  }
+  const bodyContent = JSON.parse(getRes.getContentText()).body.content;
+  const insertAt    = bodyContent[bodyContent.length - 1].endIndex - 1;
+
+  // ── Step 2: build segments ────────────────────────────────────────────────────
+  const segments = [];
+  segments.push({ text: 'Week of ' + weekLabel, style: 'heading2' });
+
+  if (synthesis.themes.length > 0) {
+    segments.push({ text: 'Themes & Patterns', style: 'heading3' });
+    synthesis.themes.forEach(t => segments.push({ text: t, style: 'bullet' }));
+  }
+  if (synthesis.gaps.length > 0) {
+    segments.push({ text: 'Knowledge Gaps', style: 'heading3' });
+    synthesis.gaps.forEach(g => segments.push({ text: g, style: 'bullet' }));
+  }
+  if (synthesis.connections.length > 0) {
+    segments.push({ text: 'Connections', style: 'heading3' });
+    synthesis.connections.forEach(c => segments.push({ text: c, style: 'bullet' }));
+  }
+  if (synthesis.questions.length > 0) {
+    segments.push({ text: 'Open Questions', style: 'heading3' });
+    synthesis.questions.forEach(q => segments.push({ text: q, style: 'bullet' }));
+  }
+  segments.push({ text: '', style: 'separator' });
+
+  // ── Step 3: compute character ranges ─────────────────────────────────────────
+  let offset = insertAt;
+  segments.forEach(seg => {
+    seg.start = offset;
+    seg.end   = offset + seg.text.length + 1;
+    offset    = seg.end;
+  });
+
+  // ── Step 4: build all batchUpdate requests ────────────────────────────────────
+  const requests = [{
+    insertText: {
+      location: { index: insertAt },
+      text: segments.map(s => s.text).join('\n') + '\n',
+    },
+  }];
+
+  segments.forEach(seg => {
+    switch (seg.style) {
+      case 'heading2':
+        requests.push({
+          updateParagraphStyle: {
+            range: { startIndex: seg.start, endIndex: seg.end },
+            paragraphStyle: { namedStyleType: 'HEADING_2' },
+            fields: 'namedStyleType',
+          },
+        });
+        break;
+      case 'heading3':
+        requests.push({
+          updateParagraphStyle: {
+            range: { startIndex: seg.start, endIndex: seg.end },
+            paragraphStyle: { namedStyleType: 'HEADING_3' },
+            fields: 'namedStyleType',
+          },
+        });
+        break;
+      case 'bullet':
+        requests.push({
+          createParagraphBullets: {
+            range: { startIndex: seg.start, endIndex: seg.end },
+            bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+          },
+        });
+        break;
+      case 'separator':
+        requests.push({
+          updateParagraphStyle: {
+            range: { startIndex: seg.start, endIndex: seg.end },
+            paragraphStyle: {
+              borderBottom: {
+                color:     { color: { rgbColor: { red: 0.75, green: 0.75, blue: 0.75 } } },
+                dashStyle: 'SOLID',
+                padding:   { magnitude: 2, unit: 'PT' },
+                width:     { magnitude: 1, unit: 'PT' },
+              },
+              spaceAbove: { magnitude: 6, unit: 'PT' },
+              spaceBelow: { magnitude: 6, unit: 'PT' },
+            },
+            fields: 'borderBottom,spaceAbove,spaceBelow',
+          },
+        });
+        break;
+    }
+  });
+
+  // ── Step 5: send all mutations in one round trip ──────────────────────────────
+  const postRes = UrlFetchApp.fetch(baseUrl + ':batchUpdate', {
+    method:             'post',
+    contentType:        'application/json',
+    headers:            auth,
+    payload:            JSON.stringify({ requests }),
+    muteHttpExceptions: true,
+  });
+  if (postRes.getResponseCode() !== 200) {
+    throw new Error('Synthesis doc batchUpdate failed (' + postRes.getResponseCode() + '): ' + postRes.getContentText());
+  }
+
+  Logger.log(`Synthesis: appended week "${weekLabel}" to doc ${docId}`);
+}
+
 // ─── Test Helpers (run manually from Apps Script editor) ──────────────────────
 
 /**
@@ -305,4 +481,21 @@ function testSendSynthesisEmail() {
   const synthesis = callGeminiForSynthesis(buildSynthesisPrompt(items));
   sendSynthesisEmail(synthesis, items.length, weekLabel);
   Logger.log('testSendSynthesisEmail: email sent — check your inbox');
+}
+
+/**
+ * Creates/finds the Weekly Synthesis doc and appends a test section.
+ * Open the doc in Drive after running to verify formatting.
+ */
+function testAppendSynthesisToDoc() {
+  const items = getSynthesisItems(7);
+  if (items.length < 3) {
+    Logger.log('testAppendSynthesisToDoc: fewer than 3 items — skipping');
+    return;
+  }
+  const weekLabel = new Date().toISOString().slice(0, 10);
+  const synthesis = callGeminiForSynthesis(buildSynthesisPrompt(items));
+  appendSynthesisToDoc(synthesis, weekLabel);
+  const docId = PropertiesService.getScriptProperties().getProperty(PROP.SYNTHESIS_DOC_ID);
+  Logger.log(`testAppendSynthesisToDoc: done — open https://docs.google.com/document/d/${docId}/edit`);
 }
