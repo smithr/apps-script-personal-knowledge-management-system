@@ -33,13 +33,13 @@ function runFrequentPipeline() {
  * Runs the YouTube source connector.
  */
 function runHourlyPipeline() {
-  Logger.log('--- runDailyPipeline start ---');
+  Logger.log('--- runHourlyPipeline start ---');
   try {
     runYouTubePipeline();
   } catch (e) {
     Logger.log(`YouTube pipeline error: ${e.message}`);
   }
-  Logger.log('--- runDailyPipeline end ---');
+  Logger.log('--- runHourlyPipeline end ---');
 }
 
 /**

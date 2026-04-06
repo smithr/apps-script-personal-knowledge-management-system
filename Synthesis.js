@@ -473,7 +473,11 @@ function runWeeklySynthesisInternal() {
     return;
   }
 
-  sendSynthesisEmail(synthesis, items.length, weekLabel);
+  try {
+    sendSynthesisEmail(synthesis, items.length, weekLabel);
+  } catch (e) {
+    Logger.log(`Synthesis: email failed — ${e.message}`);
+  }
 
   try {
     appendSynthesisToDoc(synthesis, weekLabel);
