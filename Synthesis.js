@@ -264,6 +264,8 @@ function buildSynthesisEmailHtml(synthesis, itemCount, weekLabel) {
  * @returns {string} Google Doc file ID
  */
 function getOrCreateSynthesisDoc() {
+  // Use raw PropertiesService (not getProperty()) — SYNTHESIS_DOC_ID may legitimately
+  // not exist on first run, and getProperty() throws on missing keys.
   const cached = PropertiesService.getScriptProperties().getProperty(PROP.SYNTHESIS_DOC_ID);
   if (cached) {
     try {
@@ -310,6 +312,7 @@ function getOrCreateSynthesisDoc() {
  *
  * @param {{ themes: string[], gaps: string[], connections: string[], questions: string[] }} synthesis
  * @param {string} weekLabel - ISO date string (e.g. "2026-04-06")
+ * @returns {string} URL to the Weekly Synthesis doc
  */
 function appendSynthesisToDoc(synthesis, weekLabel) {
   const docId   = getOrCreateSynthesisDoc();
@@ -428,6 +431,7 @@ function appendSynthesisToDoc(synthesis, weekLabel) {
   }
 
   Logger.log(`Synthesis: appended week "${weekLabel}" to doc ${docId}`);
+  return 'https://docs.google.com/document/d/' + docId + '/edit';
 }
 
 // ─── Test Helpers (run manually from Apps Script editor) ──────────────────────
@@ -495,7 +499,6 @@ function testAppendSynthesisToDoc() {
   }
   const weekLabel = new Date().toISOString().slice(0, 10);
   const synthesis = callGeminiForSynthesis(buildSynthesisPrompt(items));
-  appendSynthesisToDoc(synthesis, weekLabel);
-  const docId = PropertiesService.getScriptProperties().getProperty(PROP.SYNTHESIS_DOC_ID);
-  Logger.log(`testAppendSynthesisToDoc: done — open https://docs.google.com/document/d/${docId}/edit`);
+  const docUrl = appendSynthesisToDoc(synthesis, weekLabel);
+  Logger.log(`testAppendSynthesisToDoc: done — open ${docUrl}`);
 }
