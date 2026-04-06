@@ -434,6 +434,56 @@ function appendSynthesisToDoc(synthesis, weekLabel) {
   return 'https://docs.google.com/document/d/' + docId + '/edit';
 }
 
+// ─── Orchestrator ─────────────────────────────────────────────────────────────
+
+/**
+ * Main synthesis logic. Called by runWeeklySynthesis() in Code.js.
+ * Named "Internal" to avoid a global namespace collision with the Code.js trigger
+ * entry point — all Apps Script .js files share one global namespace.
+ *
+ * Flow:
+ *   1. Collect Pending + Saved items from the past 7 days
+ *   2. Skip if fewer than 3 items (not enough signal)
+ *   3. Call Gemini for synthesis (themes, gaps, connections, questions)
+ *   4. Send synthesis email to DIGEST_EMAIL
+ *   5. Append synthesis to Drive doc (failure here does not block email)
+ */
+function runWeeklySynthesisInternal() {
+  Logger.log('--- runWeeklySynthesis start ---');
+
+  const items = getSynthesisItems(7);
+  Logger.log(`Synthesis: found ${items.length} item(s) in the past 7 days`);
+
+  if (items.length < 3) {
+    Logger.log('Synthesis: fewer than 3 items — skipping');
+    Logger.log('--- runWeeklySynthesis end ---');
+    return;
+  }
+
+  // weekLabel is always YYYY-MM-DD (ISO date slice) — no HTML-sensitive characters
+  const weekLabel = new Date().toISOString().slice(0, 10);
+  const prompt    = buildSynthesisPrompt(items);
+
+  let synthesis;
+  try {
+    synthesis = callGeminiForSynthesis(prompt);
+  } catch (e) {
+    Logger.log(`Synthesis: Gemini call failed — ${e.message}`);
+    Logger.log('--- runWeeklySynthesis end (no output) ---');
+    return;
+  }
+
+  sendSynthesisEmail(synthesis, items.length, weekLabel);
+
+  try {
+    appendSynthesisToDoc(synthesis, weekLabel);
+  } catch (e) {
+    Logger.log(`Synthesis: doc append failed — ${e.message}`);
+  }
+
+  Logger.log('--- runWeeklySynthesis end ---');
+}
+
 // ─── Test Helpers (run manually from Apps Script editor) ──────────────────────
 
 /**

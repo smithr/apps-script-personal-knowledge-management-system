@@ -41,3 +41,19 @@ function runHourlyPipeline() {
   }
   Logger.log('--- runDailyPipeline end ---');
 }
+
+/**
+ * Weekly synthesis trigger (once per week, Sunday evening).
+ * Synthesizes all items from the past 7 days into themes, gaps, connections,
+ * and open questions. Delivers via email and appends to a Drive doc.
+ *
+ * Configure in the Apps Script trigger dashboard:
+ *   Trigger type: Time-driven → Week timer → Sunday → 6pm–7pm
+ */
+function runWeeklySynthesis() {
+  try {
+    runWeeklySynthesisInternal();
+  } catch (e) {
+    Logger.log(`Weekly synthesis error: ${e.message}`);
+  }
+}
