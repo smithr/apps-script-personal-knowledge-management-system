@@ -60,6 +60,7 @@ Single Google Apps Script project — no servers, no hosting, no external infras
 | `Docs.js` | Topic Doc creation and append logic |
 | `Digest.js` | Frequent digest (`sendDigest`) with full summaries; weekly recap (`sendWeeklyDigest`) compact list |
 | `WebApp.js` | `doGet` approval endpoint |
+| `Wiki.js` | Weekly wiki generation: group articles + index doc via Gemini |
 
 ### Trigger Schedule
 
@@ -70,6 +71,7 @@ Single Google Apps Script project — no servers, no hosting, no external infras
 | `sendDigest` | Every hour | Digest email with full summaries (new items only) |
 | `sendWeeklyDigest` | Once weekly | Compact recap of all still-pending items, no summaries |
 | `archiveProcessedItems` | Weekly or manual | Move Saved/Dismissed rows from Inbox to Archive tab |
+| `runWeeklyWiki` | Once weekly (Sunday night) | Generate/update wiki articles and index in Drive |
 
 ### Drive Folder Structure
 
