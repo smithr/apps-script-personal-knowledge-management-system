@@ -494,7 +494,7 @@ function writeWikiDoc(docId, groupName, wikiData, recentItems) {
   lines.push('RECENT ADDITIONS (last 5)');
   if (recentItems.length > 0) {
     recentItems.forEach(item =>
-      lines.push(item.date.slice(0, 10) + ' — ' + item.title + ': ' + item.shortSummary)
+      lines.push((item.date || '').slice(0, 10) + ' — ' + (item.title || '(untitled)') + ': ' + (item.shortSummary || ''))
     );
   } else {
     lines.push('(none)');
@@ -571,7 +571,7 @@ function writeIndexDoc(docId, indexData, groupArticles) {
 
   // Build a map of group → Gemini-generated description for fast lookup
   const descMap = {};
-  (indexData.topics || []).forEach(t => { descMap[t.group] = t.description; });
+  (indexData.topics || []).forEach(t => { if (t && t.group) descMap[t.group] = t.description || ''; });
 
   groupArticles.forEach(a => {
     const desc   = descMap[a.group] || '';
