@@ -305,6 +305,120 @@ function parseIndexJson(rawText) {
   };
 }
 
+// ─── Drive / Doc Helpers ───────────────────────────────────────────────────────
+
+/**
+ * Returns the Drive folder ID for the /Wiki/ subfolder, creating it if needed.
+ * The folder lives inside DRIVE_ROOT_FOLDER_ID. ID is cached in PROP.WIKI_FOLDER_ID.
+ *
+ * @returns {string} Drive folder ID
+ */
+function getOrCreateWikiFolder() {
+  const props  = PropertiesService.getScriptProperties();
+  const cached = props.getProperty(PROP.WIKI_FOLDER_ID);
+  if (cached) {
+    try {
+      DriveApp.getFolderById(cached);
+      return cached;
+    } catch (e) {
+      Logger.log('Wiki: cached folder ID stale — rescanning Drive');
+    }
+  }
+  const rootFolder = DriveApp.getFolderById(getProperty(PROP.DRIVE_ROOT_FOLDER));
+  const existing   = rootFolder.getFoldersByName('Wiki');
+  const folder     = existing.hasNext() ? existing.next() : rootFolder.createFolder('Wiki');
+  props.setProperty(PROP.WIKI_FOLDER_ID, folder.getId());
+  Logger.log(`Wiki: folder ready (${folder.getId()})`);
+  return folder.getId();
+}
+
+/**
+ * Returns the Doc ID for a group's wiki article, creating it if needed.
+ * Doc is placed in the /Wiki/ subfolder. ID is cached using wikiDocPropKey(groupName).
+ * The doc title format is "[groupName] — Knowledge Wiki".
+ *
+ * @param {string} groupName
+ * @returns {string} Google Doc ID
+ */
+function getOrCreateWikiDoc(groupName) {
+  const propKey = wikiDocPropKey(groupName);
+  const props   = PropertiesService.getScriptProperties();
+  const cached  = props.getProperty(propKey);
+  if (cached) {
+    try {
+      DriveApp.getFileById(cached);
+      return cached;
+    } catch (e) {
+      Logger.log(`Wiki: cached doc ID stale for "${groupName}" — recreating`);
+    }
+  }
+  const folderId = getOrCreateWikiFolder();
+  const folder   = DriveApp.getFolderById(folderId);
+  const docTitle = groupName + ' — Knowledge Wiki';
+  const existing = folder.getFilesByName(docTitle);
+  let docId;
+  if (existing.hasNext()) {
+    docId = existing.next().getId();
+    Logger.log(`Wiki: found existing doc for "${groupName}" (${docId})`);
+  } else {
+    const doc  = DocumentApp.create(docTitle);
+    const file = DriveApp.getFileById(doc.getId());
+    file.moveTo(folder);
+    docId = doc.getId();
+    Logger.log(`Wiki: created doc for "${groupName}" (${docId})`);
+  }
+  props.setProperty(propKey, docId);
+  return docId;
+}
+
+/**
+ * Returns the Doc ID for the Wiki Index doc, creating it if needed.
+ * Doc is placed in the /Wiki/ subfolder. ID is cached in PROP.WIKI_INDEX_DOC_ID.
+ *
+ * @returns {string} Google Doc ID
+ */
+function getOrCreateWikiIndexDoc() {
+  const props  = PropertiesService.getScriptProperties();
+  const cached = props.getProperty(PROP.WIKI_INDEX_DOC_ID);
+  if (cached) {
+    try {
+      DriveApp.getFileById(cached);
+      return cached;
+    } catch (e) {
+      Logger.log('Wiki: cached index doc ID stale — recreating');
+    }
+  }
+  const folderId = getOrCreateWikiFolder();
+  const folder   = DriveApp.getFolderById(folderId);
+  const existing = folder.getFilesByName('Wiki Index');
+  let docId;
+  if (existing.hasNext()) {
+    docId = existing.next().getId();
+    Logger.log(`Wiki: found existing index doc (${docId})`);
+  } else {
+    const doc  = DocumentApp.create('Wiki Index');
+    const file = DriveApp.getFileById(doc.getId());
+    file.moveTo(folder);
+    docId = doc.getId();
+    Logger.log(`Wiki: created index doc (${docId})`);
+  }
+  props.setProperty(PROP.WIKI_INDEX_DOC_ID, docId);
+  return docId;
+}
+
+/**
+ * Returns the Drive URL for the Wiki Index doc, or null if it has not been
+ * generated yet (PROP.WIKI_INDEX_DOC_ID not set).
+ * Used by WebApp.js to render a nav link without triggering doc creation.
+ *
+ * @returns {string|null}
+ */
+function getWikiIndexDocUrl() {
+  const docId = PropertiesService.getScriptProperties()
+    .getProperty(PROP.WIKI_INDEX_DOC_ID);
+  return docId ? 'https://docs.google.com/document/d/' + docId + '/edit' : null;
+}
+
 // ─── Test Helpers (run manually from Apps Script editor) ──────────────────────
 
 /**
@@ -346,4 +460,21 @@ function testCallGeminiForWiki() {
   Logger.log('Recurring Themes: ' + JSON.stringify(wikiData.recurringThemes, null, 2));
   Logger.log('Action Items: '     + JSON.stringify(wikiData.actionItems,     null, 2));
   Logger.log('Related Topics: '   + JSON.stringify(wikiData.relatedTopics,   null, 2));
+}
+
+/**
+ * Creates (or finds) the Wiki folder and Wiki Index doc without generating any content.
+ * Run from the Apps Script editor to verify Drive permissions and folder creation.
+ */
+function testSetupWikiFolderAndDocs() {
+  const folderId = getOrCreateWikiFolder();
+  Logger.log('Wiki folder ID: ' + folderId);
+  const indexDocId = getOrCreateWikiIndexDoc();
+  Logger.log('Wiki Index doc ID: ' + indexDocId);
+  Logger.log('Wiki Index URL: https://docs.google.com/document/d/' + indexDocId + '/edit');
+  const groups = getWikiGroups();
+  groups.forEach(({ group }) => {
+    const docId = getOrCreateWikiDoc(group);
+    Logger.log(`Doc for "${group}": https://docs.google.com/document/d/${docId}/edit`);
+  });
 }
