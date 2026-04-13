@@ -51,6 +51,142 @@ function getWikiGroups() {
   return Object.keys(groupMap).map(group => ({ group, tags: groupMap[group] }));
 }
 
+// ─── Per-Group Article Generation ─────────────────────────────────────────────
+
+/**
+ * Builds the Gemini prompt for a single topic group wiki article.
+ * Uses shortSummary (not fullSummary) to keep token cost bounded.
+ *
+ * @param {string}   groupName  - The topic group name (e.g. "Machine Learning")
+ * @param {Object[]} items      - Library index items belonging to this group
+ * @param {string[]} allGroups  - All group names (used to prompt for related topics)
+ * @returns {string} Complete prompt text
+ */
+function buildWikiPrompt(groupName, items, allGroups) {
+  const otherGroups = allGroups.filter(g => g !== groupName);
+
+  const itemsText = items.map((item, i) =>
+    `Item ${i + 1}: ${item.title}
+  Date: ${item.date.slice(0, 10)}
+  Source: ${item.sourceType}
+  Tags: ${(item.tags || []).join(', ')}
+  Summary: ${item.shortSummary}`
+  ).join('\n\n');
+
+  const schema = `{
+  "overview": "3-5 sentence narrative synthesis of what this topic is about",
+  "keyTerms": [{"term": "term name", "definition": "one sentence definition"}],
+  "recurringThemes": ["pattern or idea that appears across multiple items"],
+  "actionItems": ["concrete action item from the collected material"],
+  "relatedTopics": [{"group": "group name from the provided list", "reason": "one sentence explaining the connection"}]
+}`;
+
+  return `You are maintaining a personal knowledge wiki for the topic "${groupName}".
+Return ONLY a valid JSON object matching this schema — no preamble, no markdown fences:
+${schema}
+
+Instructions:
+- overview: 3-5 sentences synthesizing what this topic is about based on all saved items
+- keyTerms: compiled glossary of important terms across all items; deduplicate entries where the same term appears in multiple items, merging their definitions into one
+- recurringThemes: 3-5 patterns or ideas that appear across multiple items; omit themes mentioned in only one item
+- actionItems: aggregate concrete action items from all items; deduplicate and omit vague ones like "learn more"
+- relatedTopics: from the list [${otherGroups.join(', ')}], identify topics that connect to "${groupName}" and explain why in one sentence each; omit groups with no clear connection
+
+Here are the ${items.length} saved items for "${groupName}":
+
+${itemsText}`;
+}
+
+/**
+ * Sends a wiki article prompt to Gemini and returns parsed JSON.
+ * Retries once after 60 seconds on HTTP 429.
+ * Throws on API error or unparseable response.
+ *
+ * @param {string} prompt
+ * @returns {{ overview: string, keyTerms: Array, recurringThemes: string[], actionItems: string[], relatedTopics: Array }}
+ * @throws {Error}
+ */
+function callGeminiForWiki(prompt) {
+  const model    = getProperty(PROP.GEMINI_MODEL);
+  const apiKey   = getProperty(PROP.GEMINI_API_KEY);
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+  const payload = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature:      0.3,
+      responseMimeType: 'application/json',
+    },
+  };
+
+  const options = {
+    method:             'post',
+    contentType:        'application/json',
+    headers:            { 'x-goog-api-key': apiKey },
+    payload:            JSON.stringify(payload),
+    muteHttpExceptions: true,
+  };
+
+  let response = UrlFetchApp.fetch(endpoint, options);
+
+  if (response.getResponseCode() === 429) {
+    Logger.log('Wiki: Gemini rate limit — retrying after 60s');
+    Utilities.sleep(60000);
+    response = UrlFetchApp.fetch(endpoint, options);
+  }
+
+  if (response.getResponseCode() === 429) {
+    throw new Error('RATE_LIMIT: Gemini rate limit persisted after retry — wiki article aborted');
+  }
+
+  const code = response.getResponseCode();
+  if (code !== 200) {
+    throw new Error(`Wiki: Gemini API returned HTTP ${code}: ${response.getContentText().slice(0, 200)}`);
+  }
+
+  const jsonResponse = JSON.parse(response.getContentText());
+  if (!jsonResponse.candidates || !jsonResponse.candidates[0]) {
+    throw new Error(`Wiki: Gemini API error: ${response.getContentText()}`);
+  }
+
+  const usage = jsonResponse.usageMetadata;
+  if (usage) {
+    Logger.log(`Wiki Gemini tokens — prompt: ${usage.promptTokenCount}, output: ${usage.candidatesTokenCount}`);
+  }
+
+  const rawText = jsonResponse.candidates[0].content.parts[0].text || '';
+  return parseWikiJson(rawText);
+}
+
+/**
+ * Parses Gemini's wiki article JSON response.
+ * Normalises each field so callers never receive undefined.
+ *
+ * @param {string} rawText
+ * @returns {{ overview: string, keyTerms: Array, recurringThemes: string[], actionItems: string[], relatedTopics: Array }}
+ * @throws {Error} If no JSON object found or JSON.parse fails
+ */
+function parseWikiJson(rawText) {
+  const start = rawText.indexOf('{');
+  const end   = rawText.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error('Wiki: Gemini response contained no JSON object');
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(rawText.slice(start, end + 1));
+  } catch (e) {
+    throw new Error(`Wiki: Gemini returned unparseable JSON — ${e.message}. Raw prefix: ${rawText.slice(0, 120)}`);
+  }
+  return {
+    overview:        typeof parsed.overview === 'string'     ? parsed.overview        : '',
+    keyTerms:        Array.isArray(parsed.keyTerms)          ? parsed.keyTerms        : [],
+    recurringThemes: Array.isArray(parsed.recurringThemes)   ? parsed.recurringThemes : [],
+    actionItems:     Array.isArray(parsed.actionItems)       ? parsed.actionItems     : [],
+    relatedTopics:   Array.isArray(parsed.relatedTopics)     ? parsed.relatedTopics   : [],
+  };
+}
+
 // ─── Test Helpers (run manually from Apps Script editor) ──────────────────────
 
 /**
@@ -61,4 +197,35 @@ function testGetWikiGroups() {
   const groups = getWikiGroups();
   Logger.log(`getWikiGroups: found ${groups.length} group(s)`);
   groups.forEach(g => Logger.log(`  "${g.group}": [${g.tags.join(', ')}]`));
+}
+
+/**
+ * Calls Gemini with real library data for the first configured group and logs
+ * the parsed wiki article result. Uses real quota — only run when you have saved items.
+ */
+function testCallGeminiForWiki() {
+  const groups = getWikiGroups();
+  if (groups.length === 0) {
+    Logger.log('testCallGeminiForWiki: no configured groups — add rows to the Config sheet');
+    return;
+  }
+  const { group, tags } = groups[0];
+  const index  = readLibraryIndex();
+  const tagSet = new Set(tags.map(t => t.toLowerCase()));
+  const items  = (index.items || []).filter(item =>
+    (item.tags || []).some(t => tagSet.has(t.toLowerCase()))
+  );
+  if (items.length === 0) {
+    Logger.log(`testCallGeminiForWiki: no library items for group "${group}"`);
+    return;
+  }
+  Logger.log(`testCallGeminiForWiki: testing group "${group}" with ${items.length} item(s)`);
+  const allGroups = groups.map(g => g.group);
+  const prompt    = buildWikiPrompt(group, items, allGroups);
+  const wikiData  = callGeminiForWiki(prompt);
+  Logger.log('Overview: '         + wikiData.overview);
+  Logger.log('Key Terms: '        + JSON.stringify(wikiData.keyTerms,        null, 2));
+  Logger.log('Recurring Themes: ' + JSON.stringify(wikiData.recurringThemes, null, 2));
+  Logger.log('Action Items: '     + JSON.stringify(wikiData.actionItems,     null, 2));
+  Logger.log('Related Topics: '   + JSON.stringify(wikiData.relatedTopics,   null, 2));
 }
