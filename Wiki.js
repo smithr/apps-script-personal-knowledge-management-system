@@ -419,6 +419,187 @@ function getWikiIndexDocUrl() {
   return docId ? 'https://docs.google.com/document/d/' + docId + '/edit' : null;
 }
 
+// ─── Doc Writers ──────────────────────────────────────────────────────────────
+
+/**
+ * Replaces the content of a wiki article doc with freshly generated content.
+ * Uses two Docs REST API calls: GET to find the body length, batchUpdate to
+ * delete old content and insert new plain text.
+ *
+ * Doc format (plain text, section headers in ALL CAPS):
+ *   [Group Name] — Knowledge Wiki
+ *   Last updated: YYYY-MM-DD
+ *   ─────────────────────────────
+ *   OVERVIEW / KEY TERMS / RECURRING THEMES / ACTION ITEMS /
+ *   RECENT ADDITIONS (last 5) / RELATED TOPICS
+ *
+ * @param {string}   docId       - Google Doc ID
+ * @param {string}   groupName   - Topic group name
+ * @param {Object}   wikiData    - Parsed result from parseWikiJson()
+ * @param {Object[]} recentItems - Up to 5 most-recent library items for this group
+ */
+function writeWikiDoc(docId, groupName, wikiData, recentItems) {
+  const token   = ScriptApp.getOAuthToken();
+  const baseUrl = 'https://docs.googleapis.com/v1/documents/' + docId;
+  const auth    = { Authorization: 'Bearer ' + token };
+
+  // Step 1: GET current body length
+  const getRes = UrlFetchApp.fetch(baseUrl + '?fields=body.content.endIndex', {
+    headers:            auth,
+    muteHttpExceptions: true,
+  });
+  if (getRes.getResponseCode() !== 200) {
+    throw new Error(`Wiki: doc GET failed (${getRes.getResponseCode()}): ${getRes.getContentText()}`);
+  }
+  const bodyContent = JSON.parse(getRes.getContentText()).body.content;
+  const endIndex    = bodyContent[bodyContent.length - 1].endIndex;
+
+  // Step 2: Build plain-text content
+  const dateLabel = new Date().toISOString().slice(0, 10);
+  const lines     = [];
+
+  lines.push(groupName + ' — Knowledge Wiki');
+  lines.push('Last updated: ' + dateLabel);
+  lines.push('─────────────────────────────');
+  lines.push('');
+
+  lines.push('OVERVIEW');
+  lines.push(wikiData.overview || '(none)');
+  lines.push('');
+
+  lines.push('KEY TERMS');
+  if (wikiData.keyTerms.length > 0) {
+    wikiData.keyTerms.forEach(kt => lines.push((kt.term || '') + ': ' + (kt.definition || '')));
+  } else {
+    lines.push('(none)');
+  }
+  lines.push('');
+
+  lines.push('RECURRING THEMES');
+  if (wikiData.recurringThemes.length > 0) {
+    wikiData.recurringThemes.forEach(t => lines.push('• ' + t));
+  } else {
+    lines.push('(none)');
+  }
+  lines.push('');
+
+  lines.push('ACTION ITEMS');
+  if (wikiData.actionItems.length > 0) {
+    wikiData.actionItems.forEach(a => lines.push('• ' + a));
+  } else {
+    lines.push('(none)');
+  }
+  lines.push('');
+
+  lines.push('RECENT ADDITIONS (last 5)');
+  if (recentItems.length > 0) {
+    recentItems.forEach(item =>
+      lines.push(item.date.slice(0, 10) + ' — ' + item.title + ': ' + item.shortSummary)
+    );
+  } else {
+    lines.push('(none)');
+  }
+  lines.push('');
+
+  lines.push('RELATED TOPICS');
+  if (wikiData.relatedTopics.length > 0) {
+    wikiData.relatedTopics.forEach(rt =>
+      lines.push((rt.group || '') + ': ' + (rt.reason || ''))
+    );
+  } else {
+    lines.push('(none)');
+  }
+
+  const newText = lines.join('\n');
+
+  // Step 3: batchUpdate — delete existing content then insert new text
+  const requests = [];
+  if (endIndex > 2) {
+    requests.push({ deleteContentRange: { range: { startIndex: 1, endIndex: endIndex - 1 } } });
+  }
+  requests.push({ insertText: { location: { index: 1 }, text: newText } });
+
+  const postRes = UrlFetchApp.fetch(baseUrl + ':batchUpdate', {
+    method:             'post',
+    contentType:        'application/json',
+    headers:            auth,
+    payload:            JSON.stringify({ requests }),
+    muteHttpExceptions: true,
+  });
+  if (postRes.getResponseCode() !== 200) {
+    throw new Error(`Wiki: doc batchUpdate failed (${postRes.getResponseCode()}): ${postRes.getContentText()}`);
+  }
+  Logger.log(`Wiki: wrote article for "${groupName}" (${docId})`);
+}
+
+/**
+ * Replaces the content of the Wiki Index doc.
+ * Lists all groups with their Gemini-generated one-line descriptions and doc URLs.
+ *
+ * @param {string}   docId         - Wiki Index doc ID
+ * @param {Object}   indexData     - Parsed result from parseIndexJson()
+ * @param {Array<{group: string, overview: string, docId: string}>} groupArticles
+ */
+function writeIndexDoc(docId, indexData, groupArticles) {
+  const token   = ScriptApp.getOAuthToken();
+  const baseUrl = 'https://docs.googleapis.com/v1/documents/' + docId;
+  const auth    = { Authorization: 'Bearer ' + token };
+
+  const getRes = UrlFetchApp.fetch(baseUrl + '?fields=body.content.endIndex', {
+    headers:            auth,
+    muteHttpExceptions: true,
+  });
+  if (getRes.getResponseCode() !== 200) {
+    throw new Error(`Wiki index: doc GET failed (${getRes.getResponseCode()}): ${getRes.getContentText()}`);
+  }
+  const bodyContent = JSON.parse(getRes.getContentText()).body.content;
+  const endIndex    = bodyContent[bodyContent.length - 1].endIndex;
+
+  const dateLabel = new Date().toISOString().slice(0, 10);
+  const lines     = [];
+
+  lines.push('PKM Knowledge Base — Wiki Index');
+  lines.push('Last updated: ' + dateLabel);
+  lines.push('─────────────────────────────');
+  lines.push('');
+
+  lines.push('OVERVIEW');
+  lines.push(indexData.summary || '(none)');
+  lines.push('');
+
+  lines.push('TOPICS');
+
+  // Build a map of group → Gemini-generated description for fast lookup
+  const descMap = {};
+  (indexData.topics || []).forEach(t => { descMap[t.group] = t.description; });
+
+  groupArticles.forEach(a => {
+    const desc   = descMap[a.group] || '';
+    const docUrl = 'https://docs.google.com/document/d/' + a.docId + '/edit';
+    lines.push(a.group + (desc ? ': ' + desc : '') + '\n  ' + docUrl);
+  });
+
+  const newText = lines.join('\n');
+
+  const requests = [];
+  if (endIndex > 2) {
+    requests.push({ deleteContentRange: { range: { startIndex: 1, endIndex: endIndex - 1 } } });
+  }
+  requests.push({ insertText: { location: { index: 1 }, text: newText } });
+
+  const postRes = UrlFetchApp.fetch(baseUrl + ':batchUpdate', {
+    method:             'post',
+    contentType:        'application/json',
+    headers:            auth,
+    payload:            JSON.stringify({ requests }),
+    muteHttpExceptions: true,
+  });
+  if (postRes.getResponseCode() !== 200) {
+    throw new Error(`Wiki index: batchUpdate failed (${postRes.getResponseCode()}): ${postRes.getContentText()}`);
+  }
+  Logger.log(`Wiki: index written (${docId})`);
+}
+
 // ─── Test Helpers (run manually from Apps Script editor) ──────────────────────
 
 /**
