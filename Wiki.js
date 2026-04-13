@@ -10,6 +10,9 @@
 // Delay between per-group Gemini calls to avoid rate limits (milliseconds).
 const WIKI_GEMINI_DELAY_MS = 2000;
 
+// Delay before retrying a Gemini 429 response (milliseconds).
+const WIKI_RATE_LIMIT_RETRY_DELAY_MS = 60000;
+
 /**
  * Returns the Script Property key used to cache a wiki doc ID for a given group.
  * Group name is uppercased and non-alphanumeric characters replaced with underscores
@@ -67,10 +70,10 @@ function buildWikiPrompt(groupName, items, allGroups) {
 
   const itemsText = items.map((item, i) =>
     `Item ${i + 1}: ${item.title}
-  Date: ${item.date.slice(0, 10)}
+  Date: ${(item.date || '').slice(0, 10)}
   Source: ${item.sourceType}
   Tags: ${(item.tags || []).join(', ')}
-  Summary: ${item.shortSummary}`
+  Summary: ${item.shortSummary || '(none)'}`
   ).join('\n\n');
 
   const schema = `{
@@ -130,8 +133,8 @@ function callGeminiForWiki(prompt) {
   let response = UrlFetchApp.fetch(endpoint, options);
 
   if (response.getResponseCode() === 429) {
-    Logger.log('Wiki: Gemini rate limit — retrying after 60s');
-    Utilities.sleep(60000);
+    Logger.log(`Wiki: Gemini rate limit — retrying after ${WIKI_RATE_LIMIT_RETRY_DELAY_MS}ms`);
+    Utilities.sleep(WIKI_RATE_LIMIT_RETRY_DELAY_MS);
     response = UrlFetchApp.fetch(endpoint, options);
   }
 
@@ -151,7 +154,7 @@ function callGeminiForWiki(prompt) {
 
   const usage = jsonResponse.usageMetadata;
   if (usage) {
-    Logger.log(`Wiki Gemini tokens — prompt: ${usage.promptTokenCount}, output: ${usage.candidatesTokenCount}`);
+    Logger.log(`Wiki Gemini tokens — prompt: ${usage.promptTokenCount}, output: ${usage.candidatesTokenCount}, total: ${usage.totalTokenCount}`);
   }
 
   const rawText = jsonResponse.candidates[0].content.parts[0].text || '';
