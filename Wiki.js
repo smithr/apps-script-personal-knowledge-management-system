@@ -297,7 +297,7 @@ function parseIndexJson(rawText) {
   try {
     parsed = JSON.parse(rawText.slice(start, end + 1));
   } catch (e) {
-    throw new Error(`Wiki index: Gemini returned unparseable JSON — ${e.message}`);
+    throw new Error(`Wiki index: Gemini returned unparseable JSON — ${e.message}. Raw prefix: ${rawText.slice(0, 120)}`);
   }
   return {
     summary: typeof parsed.summary === 'string' ? parsed.summary : '',
