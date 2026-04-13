@@ -615,6 +615,11 @@ function writeIndexDoc(docId, indexData, groupArticles) {
  * group retains its previous content.
  */
 function buildWiki() {
+  // NOTE: Apps Script has a 6-minute wall-clock execution limit. Each Gemini 429
+  // triggers a 60-second retry sleep (WIKI_RATE_LIMIT_RETRY_DELAY_MS). With many
+  // groups and/or back-to-back rate-limit retries the run may be killed mid-flight.
+  // If that happens, property-cached Doc IDs for completed groups are preserved;
+  // only the in-progress group and any later groups are affected.
   Logger.log('--- buildWiki start ---');
 
   const groups = getWikiGroups();
