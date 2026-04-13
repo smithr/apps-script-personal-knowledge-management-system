@@ -600,6 +600,94 @@ function writeIndexDoc(docId, indexData, groupArticles) {
   Logger.log(`Wiki: index written (${docId})`);
 }
 
+// ─── Orchestrator ─────────────────────────────────────────────────────────────
+
+/**
+ * Main wiki build logic. Called by runWeeklyWiki() in Code.js.
+ *
+ * Flow:
+ *   1. Load all Config groups
+ *   2. For each group: find matching library items → call Gemini → write doc
+ *   3. After all groups: call Gemini for index → write Wiki Index doc
+ *
+ * Per-group failures are logged and skipped; the index is built from whatever
+ * groups succeeded. Each group doc is only overwritten on success, so a failed
+ * group retains its previous content.
+ */
+function buildWiki() {
+  Logger.log('--- buildWiki start ---');
+
+  const groups = getWikiGroups();
+  if (groups.length === 0) {
+    Logger.log('Wiki: no configured groups found in Config sheet — skipping');
+    Logger.log('--- buildWiki end ---');
+    return;
+  }
+  Logger.log(`Wiki: found ${groups.length} group(s): ${groups.map(g => g.group).join(', ')}`);
+
+  const allGroupNames  = groups.map(g => g.group);
+  const index          = readLibraryIndex();
+  const groupArticles  = []; // collects { group, overview, docId } for successful articles
+
+  groups.forEach(({ group, tags }, i) => {
+    try {
+      const tagSet = new Set(tags.map(t => t.toLowerCase()));
+      const items  = (index.items || []).filter(item =>
+        (item.tags || []).some(t => tagSet.has(t.toLowerCase()))
+      );
+
+      if (items.length === 0) {
+        Logger.log(`Wiki: skipping "${group}" — no library items with tags [${tags.join(', ')}]`);
+        return;
+      }
+
+      Logger.log(`Wiki: generating article for "${group}" (${items.length} item(s))`);
+
+      const prompt   = buildWikiPrompt(group, items, allGroupNames);
+      const wikiData = callGeminiForWiki(prompt);
+
+      // Sort by date descending, take most recent 5
+      const recentItems = items
+        .slice()
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 5);
+
+      const docId = getOrCreateWikiDoc(group);
+      writeWikiDoc(docId, group, wikiData, recentItems);
+
+      groupArticles.push({ group, overview: wikiData.overview, docId });
+      Logger.log(`Wiki: article written for "${group}"`);
+    } catch (e) {
+      Logger.log(`Wiki: FAILED for group "${group}" — ${e.message}`);
+    }
+
+    // Pause between groups to avoid Gemini rate limits (skip after last group)
+    if (i < groups.length - 1) {
+      Utilities.sleep(WIKI_GEMINI_DELAY_MS);
+    }
+  });
+
+  if (groupArticles.length === 0) {
+    Logger.log('Wiki: no articles generated — skipping index');
+    Logger.log('--- buildWiki end (0 articles) ---');
+    return;
+  }
+
+  // Generate and write the index doc
+  try {
+    Logger.log(`Wiki: generating index for ${groupArticles.length} group(s)`);
+    const indexPrompt = buildIndexPrompt(groupArticles);
+    const indexData   = callGeminiForIndex(indexPrompt);
+    const indexDocId  = getOrCreateWikiIndexDoc();
+    writeIndexDoc(indexDocId, indexData, groupArticles);
+    Logger.log('Wiki: index written');
+  } catch (e) {
+    Logger.log(`Wiki: index generation FAILED — ${e.message}`);
+  }
+
+  Logger.log(`--- buildWiki end (${groupArticles.length}/${groups.length} articles written) ---`);
+}
+
 // ─── Test Helpers (run manually from Apps Script editor) ──────────────────────
 
 /**
@@ -658,4 +746,16 @@ function testSetupWikiFolderAndDocs() {
     const docId = getOrCreateWikiDoc(group);
     Logger.log(`Doc for "${group}": https://docs.google.com/document/d/${docId}/edit`);
   });
+}
+
+/**
+ * Runs the full wiki build end-to-end with real data and real Gemini calls.
+ * Open the /Wiki/ folder in Drive after running to verify docs were created/updated.
+ * Uses real quota — only run when you have saved items in the library.
+ */
+function testBuildWiki() {
+  buildWiki();
+  Logger.log('testBuildWiki: complete — check /Wiki/ folder in Drive');
+  const indexUrl = getWikiIndexDocUrl();
+  if (indexUrl) Logger.log('Wiki Index: ' + indexUrl);
 }

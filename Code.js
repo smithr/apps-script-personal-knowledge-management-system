@@ -57,3 +57,19 @@ function runWeeklySynthesis() {
     Logger.log(`Weekly synthesis error: ${e.message}`);
   }
 }
+
+/**
+ * Weekly wiki rebuild trigger (once per week, Sunday night).
+ * Generates/updates one Google Doc per topic group plus a Wiki Index doc.
+ * Run after archiveProcessedItems so the wiki reflects committed knowledge.
+ *
+ * Configure in the Apps Script trigger dashboard:
+ *   Trigger type: Time-driven → Week timer → Sunday → 10pm–11pm
+ */
+function runWeeklyWiki() {
+  try {
+    buildWiki();
+  } catch (e) {
+    Logger.log(`Weekly wiki error: ${e.message}`);
+  }
+}
