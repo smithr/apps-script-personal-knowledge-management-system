@@ -53,12 +53,21 @@ function getSynthesisItems(days) {
         continue;
       }
 
+      // Use summaryJson.tags (authoritative) over COL.TAGS (denormalized string, not updated post-ingest)
+      const tags      = Array.isArray(summaryJson.tags)      ? summaryJson.tags      : [];
+      const rawPoints = Array.isArray(summaryJson.keyPoints) ? summaryJson.keyPoints : [];
+      // Fall back to shortSummary when keyPoints is empty so items with a summary
+      // but no extracted points still contribute signal. Items with neither are
+      // included here and filtered out in the orchestrator after logging.
+      const keyPoints = rawPoints.length > 0
+        ? rawPoints
+        : (summaryJson.shortSummary ? [summaryJson.shortSummary] : []);
+
       result.push({
         title:      String(row[COL.TITLE       - 1] || ''),
         sourceType: String(row[COL.SOURCE_TYPE - 1] || ''),
-        // Use summaryJson.tags (authoritative) over COL.TAGS (denormalized string, not updated post-ingest)
-        tags:       Array.isArray(summaryJson.tags)      ? summaryJson.tags      : [],
-        keyPoints:  Array.isArray(summaryJson.keyPoints) ? summaryJson.keyPoints : [],
+        tags,
+        keyPoints,
       });
     }
   });
@@ -451,8 +460,9 @@ function appendSynthesisToDoc(synthesis, weekLabel) {
 function runWeeklySynthesisInternal() {
   Logger.log('--- runWeeklySynthesis start ---');
 
-  const items = getSynthesisItems(7);
-  Logger.log(`Synthesis: found ${items.length} item(s) in the past 7 days`);
+  const allItems = getSynthesisItems(7);
+  const items    = allItems.filter(item => item.keyPoints.length > 0);
+  Logger.log(`Synthesis: found ${allItems.length} item(s) in the past 7 days, ${items.length} with usable content`);
 
   if (items.length < 3) {
     Logger.log('Synthesis: fewer than 3 items — skipping');
