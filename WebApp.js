@@ -491,7 +491,8 @@ function provideContentFromClient(itemId, content) {
 function handleInboxView() {
   const items     = getAllPendingItems();
   const webAppUrl = getProperty(PROP.WEBAPP_URL);
-  return HtmlService.createHtmlOutput(buildInboxPage(items, webAppUrl))
+  const wikiUrl   = getWikiIndexDocUrl();
+  return HtmlService.createHtmlOutput(buildInboxPage(items, webAppUrl, wikiUrl))
     .setTitle('PKM Inbox')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
@@ -503,7 +504,7 @@ function handleInboxView() {
  * @param {string}   webAppUrl
  * @returns {string}
  */
-function buildInboxPage(items, webAppUrl) {
+function buildInboxPage(items, webAppUrl, wikiUrl) {
   const cards = items.length > 0
     ? items.map(item => buildInboxItemCard(item, webAppUrl)).join('\n')
     : '<p style="color:#888;text-align:center;padding:40px 0;">No pending items.</p>';
@@ -585,7 +586,7 @@ function buildInboxPage(items, webAppUrl) {
   </head>
   <body>
     <h1>PKM Inbox</h1>
-    <p class="subtitle">${items.length} pending item${items.length !== 1 ? 's' : ''} &nbsp;·&nbsp; <a href="${webAppUrl}?action=capture" style="color:#1a73e8;text-decoration:none;" target="_top">Add article →</a> &nbsp;·&nbsp; <a href="${webAppUrl}?action=library" style="color:#1a73e8;text-decoration:none;" target="_top">Library →</a></p>
+    <p class="subtitle">${items.length} pending item${items.length !== 1 ? 's' : ''} &nbsp;·&nbsp; <a href="${webAppUrl}?action=capture" style="color:#1a73e8;text-decoration:none;" target="_top">Add article →</a> &nbsp;·&nbsp; <a href="${webAppUrl}?action=library" style="color:#1a73e8;text-decoration:none;" target="_top">Library →</a>${wikiUrl ? ' &nbsp;·&nbsp; <a href="' + wikiUrl + '" style="color:#1a73e8;text-decoration:none;" target="_top">Wiki →</a>' : ''}</p>
     ${cards}
   </body>
 </html>`;
@@ -646,7 +647,8 @@ function buildInboxItemCard(item, webAppUrl) {
  */
 function handleLibraryView() {
   const webAppUrl = getProperty(PROP.WEBAPP_URL);
-  return HtmlService.createHtmlOutput(buildLibraryPage(webAppUrl))
+  const wikiUrl   = getWikiIndexDocUrl();
+  return HtmlService.createHtmlOutput(buildLibraryPage(webAppUrl, wikiUrl))
     .setTitle('PKM Library')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
@@ -658,7 +660,7 @@ function handleLibraryView() {
  * @param {string} webAppUrl
  * @returns {string}
  */
-function buildLibraryPage(webAppUrl) {
+function buildLibraryPage(webAppUrl, wikiUrl) {
   return `<!DOCTYPE html>
 <html>
   <head>
@@ -758,7 +760,7 @@ function buildLibraryPage(webAppUrl) {
           <h1>PKM Library</h1>
           <input type="search" id="searchBox" placeholder="Search titles and summaries…" oninput="renderGrid()">
           <span class="count" id="countLabel"></span>
-          <a href="${webAppUrl}" target="_top">← Inbox</a>
+          <a href="${webAppUrl}" target="_top">← Inbox</a>${wikiUrl ? ' &nbsp; <a href="' + wikiUrl + '" target="_top" style="color:#1a73e8;text-decoration:none;font-size:13px;">Wiki →</a>' : ''}
         </div>
         <div id="status" class="loading">Loading library…</div>
         <div class="grid" id="grid"></div>
