@@ -19,6 +19,8 @@ const PROP = {
   LIBRARY_INDEX_FILE_ID: 'LIBRARY_INDEX_FILE_ID', // cached Drive file ID, managed by system
   TOPIC_DOC_CACHE:       'TOPIC_DOC_CACHE',       // JSON map of docName::quarter → {id, count}, managed by system
   SYNTHESIS_DOC_ID:      'SYNTHESIS_DOC_ID',      // cached ID of the Weekly Synthesis doc
+  WIKI_FOLDER_ID:        'WIKI_FOLDER_ID',        // cached Drive folder ID for /Wiki/ subfolder
+  WIKI_INDEX_DOC_ID:     'WIKI_INDEX_DOC_ID',     // cached Doc ID for the Wiki Index
 };
 
 // ─── Sheet Tab Names ─────────────────────────────────────────────────────────
