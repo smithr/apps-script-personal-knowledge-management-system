@@ -190,6 +190,121 @@ function parseWikiJson(rawText) {
   };
 }
 
+// ─── Wiki Index Generation ─────────────────────────────────────────────────────
+
+/**
+ * Builds the Gemini prompt for the Wiki Index doc.
+ * Each group contributes its generated overview paragraph.
+ *
+ * @param {Array<{group: string, overview: string}>} groupArticles
+ * @returns {string}
+ */
+function buildIndexPrompt(groupArticles) {
+  const topicsText = groupArticles.map(a => `${a.group}:\n${a.overview}`).join('\n\n');
+
+  const schema = `{
+  "summary": "one paragraph (3-5 sentences) describing the full knowledge base",
+  "topics": [{"group": "group name", "description": "one-line description under 100 characters"}]
+}`;
+
+  return `You are summarizing a personal knowledge base index.
+Return ONLY a valid JSON object matching this schema — no preamble, no markdown fences:
+${schema}
+
+Instructions:
+- summary: 3-5 sentences describing the overall knowledge base, its main themes, and how the topics relate to each other
+- topics: for each topic below, write a crisp one-line description (under 100 characters) that captures its essence; preserve the group name exactly as given
+
+Here are the ${groupArticles.length} topic overviews:
+
+${topicsText}`;
+}
+
+/**
+ * Sends the index prompt to Gemini and returns parsed JSON.
+ * Same retry/error pattern as callGeminiForWiki.
+ *
+ * @param {string} prompt
+ * @returns {{ summary: string, topics: Array<{group: string, description: string}> }}
+ * @throws {Error}
+ */
+function callGeminiForIndex(prompt) {
+  const model    = getProperty(PROP.GEMINI_MODEL);
+  const apiKey   = getProperty(PROP.GEMINI_API_KEY);
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+  const payload = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature:      0.3,
+      responseMimeType: 'application/json',
+    },
+  };
+
+  const options = {
+    method:             'post',
+    contentType:        'application/json',
+    headers:            { 'x-goog-api-key': apiKey },
+    payload:            JSON.stringify(payload),
+    muteHttpExceptions: true,
+  };
+
+  let response = UrlFetchApp.fetch(endpoint, options);
+
+  if (response.getResponseCode() === 429) {
+    Logger.log(`Wiki index: Gemini rate limit — retrying after ${WIKI_RATE_LIMIT_RETRY_DELAY_MS}ms`);
+    Utilities.sleep(WIKI_RATE_LIMIT_RETRY_DELAY_MS);
+    response = UrlFetchApp.fetch(endpoint, options);
+  }
+
+  if (response.getResponseCode() === 429) {
+    throw new Error('RATE_LIMIT: Gemini rate limit persisted after retry — wiki index aborted');
+  }
+
+  const code = response.getResponseCode();
+  if (code !== 200) {
+    throw new Error(`Wiki index: Gemini API returned HTTP ${code}: ${response.getContentText().slice(0, 200)}`);
+  }
+
+  const jsonResponse = JSON.parse(response.getContentText());
+  if (!jsonResponse.candidates || !jsonResponse.candidates[0]) {
+    throw new Error(`Wiki index: Gemini API error: ${response.getContentText()}`);
+  }
+
+  const usage = jsonResponse.usageMetadata;
+  if (usage) {
+    Logger.log(`Wiki index Gemini tokens — prompt: ${usage.promptTokenCount}, output: ${usage.candidatesTokenCount}, total: ${usage.totalTokenCount}`);
+  }
+
+  const rawText = jsonResponse.candidates[0].content.parts[0].text || '';
+  return parseIndexJson(rawText);
+}
+
+/**
+ * Parses Gemini's wiki index JSON response.
+ *
+ * @param {string} rawText
+ * @returns {{ summary: string, topics: Array<{group: string, description: string}> }}
+ * @throws {Error}
+ */
+function parseIndexJson(rawText) {
+  const start = rawText.indexOf('{');
+  const end   = rawText.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error('Wiki index: Gemini response contained no JSON object');
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(rawText.slice(start, end + 1));
+  } catch (e) {
+    throw new Error(`Wiki index: Gemini returned unparseable JSON — ${e.message}`);
+  }
+  return {
+    summary: typeof parsed.summary === 'string' ? parsed.summary : '',
+    topics:  Array.isArray(parsed.topics)       ? parsed.topics  : [],
+  };
+}
+
 // ─── Test Helpers (run manually from Apps Script editor) ──────────────────────
 
 /**
