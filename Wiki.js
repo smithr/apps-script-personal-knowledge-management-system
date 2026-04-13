@@ -38,7 +38,7 @@ function getWikiGroups() {
 
   const groupMap = {}; // group → [tags]
 
-  data.forEach(row => {
+  data.slice(1).forEach(row => { // slice(1) skips the header row explicitly
     const tag      = String(row[0] || '').trim();
     const folderId = String(row[1] || '').trim();
     if (!tag || !folderId) return; // skip rows with no tag or no folder configured
