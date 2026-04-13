@@ -500,8 +500,9 @@ function handleInboxView() {
 /**
  * Builds the full inbox page HTML.
  *
- * @param {Object[]} items
- * @param {string}   webAppUrl
+ * @param {Object[]}    items
+ * @param {string}      webAppUrl
+ * @param {string|null} wikiUrl
  * @returns {string}
  */
 function buildInboxPage(items, webAppUrl, wikiUrl) {
@@ -586,7 +587,7 @@ function buildInboxPage(items, webAppUrl, wikiUrl) {
   </head>
   <body>
     <h1>PKM Inbox</h1>
-    <p class="subtitle">${items.length} pending item${items.length !== 1 ? 's' : ''} &nbsp;·&nbsp; <a href="${webAppUrl}?action=capture" style="color:#1a73e8;text-decoration:none;" target="_top">Add article →</a> &nbsp;·&nbsp; <a href="${webAppUrl}?action=library" style="color:#1a73e8;text-decoration:none;" target="_top">Library →</a>${wikiUrl ? ' &nbsp;·&nbsp; <a href="' + wikiUrl + '" style="color:#1a73e8;text-decoration:none;" target="_top">Wiki →</a>' : ''}</p>
+    <p class="subtitle">${items.length} pending item${items.length !== 1 ? 's' : ''} &nbsp;·&nbsp; <a href="${webAppUrl}?action=capture" style="color:#1a73e8;text-decoration:none;" target="_top">Add article →</a> &nbsp;·&nbsp; <a href="${webAppUrl}?action=library" style="color:#1a73e8;text-decoration:none;" target="_top">Library →</a>${wikiUrl ? ` &nbsp;·&nbsp; <a href="${wikiUrl}" style="color:#1a73e8;text-decoration:none;" target="_top">Wiki →</a>` : ''}</p>
     ${cards}
   </body>
 </html>`;
@@ -657,7 +658,8 @@ function handleLibraryView() {
  * Builds the full library page HTML shell.
  * Tag sidebar + card grid; data loaded and rendered client-side.
  *
- * @param {string} webAppUrl
+ * @param {string}      webAppUrl
+ * @param {string|null} wikiUrl
  * @returns {string}
  */
 function buildLibraryPage(webAppUrl, wikiUrl) {
@@ -760,7 +762,7 @@ function buildLibraryPage(webAppUrl, wikiUrl) {
           <h1>PKM Library</h1>
           <input type="search" id="searchBox" placeholder="Search titles and summaries…" oninput="renderGrid()">
           <span class="count" id="countLabel"></span>
-          <a href="${webAppUrl}" target="_top">← Inbox</a>${wikiUrl ? ' &nbsp; <a href="' + wikiUrl + '" target="_top" style="color:#1a73e8;text-decoration:none;font-size:13px;">Wiki →</a>' : ''}
+          <a href="${webAppUrl}" target="_top">← Inbox</a>${wikiUrl ? ` &nbsp; <a href="${wikiUrl}" target="_top" style="color:#1a73e8;text-decoration:none;font-size:13px;">Wiki →</a>` : ''}
         </div>
         <div id="status" class="loading">Loading library…</div>
         <div class="grid" id="grid"></div>
