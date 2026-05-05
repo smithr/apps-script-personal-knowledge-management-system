@@ -110,6 +110,7 @@ function addItemToLibrary(item, summary, selectedTags, docLink) {
     });
 
     index.lastUpdated = new Date().toISOString();
+    try { index.configuredTags = getConfiguredTags(); } catch (_) {}
     writeLibraryIndex(index);
     Logger.log(`Library: indexed "${item.title}" under [${selectedTags.join(', ')}]`);
   } catch (e) {
@@ -127,9 +128,11 @@ function addItemToLibrary(item, summary, selectedTags, docLink) {
  * @returns {{ lastUpdated: string, items: Array, configuredTags: string[] }}
  */
 function getLibraryIndexJson() {
-  const index         = readLibraryIndex();
-  const configuredTags = getConfiguredTags();
-  const hasFavorites  = (index.items || []).some(
+  const index = readLibraryIndex();
+  const configuredTags = (index.configuredTags && index.configuredTags.length > 0)
+    ? index.configuredTags
+    : getConfiguredTags();
+  const hasFavorites = (index.items || []).some(
     item => (item.tags || []).some(t => t.toLowerCase() === 'favorites')
   );
   if (hasFavorites && !configuredTags.some(t => t.toLowerCase() === 'favorites')) {

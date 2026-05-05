@@ -647,9 +647,10 @@ function buildInboxItemCard(item, webAppUrl) {
  * @returns {GoogleAppsScript.HTML.HtmlOutput}
  */
 function handleLibraryView() {
-  const webAppUrl = getProperty(PROP.WEBAPP_URL);
-  const wikiUrl   = getWikiIndexDocUrl();
-  return HtmlService.createHtmlOutput(buildLibraryPage(webAppUrl, wikiUrl))
+  const webAppUrl   = getProperty(PROP.WEBAPP_URL);
+  const wikiUrl     = getWikiIndexDocUrl();
+  const libraryData = getLibraryIndexJson();
+  return HtmlService.createHtmlOutput(buildLibraryPage(webAppUrl, wikiUrl, libraryData))
     .setTitle('PKM Library')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
@@ -662,7 +663,9 @@ function handleLibraryView() {
  * @param {string|null} wikiUrl
  * @returns {string}
  */
-function buildLibraryPage(webAppUrl, wikiUrl) {
+function buildLibraryPage(webAppUrl, wikiUrl, libraryData) {
+  const safeJson = JSON.stringify(libraryData)
+    .replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
   return `<!DOCTYPE html>
 <html>
   <head>
@@ -731,7 +734,6 @@ function buildLibraryPage(webAppUrl, wikiUrl) {
       .star-btn.starred { color: #f9a825; }
       .star-btn:hover { color: #f9a825; }
       .empty { color: #888; text-align: center; padding: 60px 0; grid-column: 1/-1; }
-      .loading { color: #888; text-align: center; padding: 60px 0; }
       .pagination {
         display: flex; align-items: center; justify-content: center;
         gap: 12px; margin-top: 20px; font-size: 13px; color: #555;
@@ -764,7 +766,6 @@ function buildLibraryPage(webAppUrl, wikiUrl) {
           <span class="count" id="countLabel"></span>
           <a href="${webAppUrl}" target="_top">← Inbox</a>${wikiUrl ? ` &nbsp; <a href="${wikiUrl}" target="_top" style="color:#1a73e8;text-decoration:none;font-size:13px;">Wiki →</a>` : ''}
         </div>
-        <div id="status" class="loading">Loading library…</div>
         <div class="grid" id="grid"></div>
         <div id="pagination"></div>
       </main>
@@ -783,19 +784,13 @@ function buildLibraryPage(webAppUrl, wikiUrl) {
         'Capture': '#00897B',
       };
 
-      google.script.run
-        .withSuccessHandler(function(index) {
-          // Only show items that were saved to a Doc
-          allItems       = (index.items || []).filter(function(i) { return !!i.docLink; }).reverse();
-          configuredTags = (index.configuredTags || []).map(function(t) { return t.toLowerCase(); });
-          buildTagSidebar();
-          renderGrid();
-          document.getElementById('status').style.display = 'none';
-        })
-        .withFailureHandler(function(err) {
-          document.getElementById('status').textContent = 'Failed to load library: ' + err.message;
-        })
-        .getLibraryIndexJson();
+      (function() {
+        var index = ${safeJson};
+        allItems       = (index.items || []).filter(function(i) { return !!i.docLink; }).reverse();
+        configuredTags = (index.configuredTags || []).map(function(t) { return t.toLowerCase(); });
+        buildTagSidebar();
+        renderGrid();
+      })();
 
       function buildTagSidebar() {
         // Count only configured tags so Gemini-suggested tags don't pollute the sidebar
