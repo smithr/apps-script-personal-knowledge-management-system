@@ -18,12 +18,11 @@ function runGmailPipeline() {
       try {
         const summary = summarizeItem(item);
         addItemToInbox(item, summary);
+        processedIds.push(item.rawMetadata.threadId);
       } catch (e) {
         if (e.message.startsWith('RATE_LIMIT:')) throw e; // bubble up; do not mark as processed
-        Logger.log(`Gmail: failed to process "${item.title}" — skipping. Error: ${e.message}`);
+        Logger.log(`Gmail: failed to process "${item.title}" — will retry next run. Error: ${e.message}`);
       }
-      // Only reached when no rate limit error — marks processed to prevent infinite retries
-      processedIds.push(item.rawMetadata.threadId);
     });
   } catch (e) {
     if (e.message.startsWith('RATE_LIMIT:')) {

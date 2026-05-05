@@ -21,12 +21,11 @@ function runTasksPipeline() {
         const summary = summarizeItem(item);
         addItemToInbox(item, summary);
         completeTask(taskListId, item.rawMetadata.taskId);
+        processedIds.push(item.rawMetadata.taskId);
       } catch (e) {
         if (e.message.startsWith('RATE_LIMIT:')) throw e; // bubble up; do not mark as processed
-        Logger.log(`Tasks: failed to process "${item.title}" — skipping. Error: ${e.message}`);
+        Logger.log(`Tasks: failed to process "${item.title}" — will retry next run. Error: ${e.message}`);
       }
-      // Only reached when no rate limit error — marks processed to prevent infinite retries
-      processedIds.push(item.rawMetadata.taskId);
     });
   } catch (e) {
     if (e.message.startsWith('RATE_LIMIT:')) {

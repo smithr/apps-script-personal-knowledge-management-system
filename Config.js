@@ -159,6 +159,33 @@ function reprocessItem() {
 }
 
 /**
+ * Clears all Gmail thread IDs and Google Task IDs from the processed store,
+ * keeping only YouTube video IDs. YouTube IDs are identified by matching
+ * SOURCE_ID values in the Inbox and Archive sheets.
+ *
+ * Run this one-off from the Apps Script editor to unstick tasks or emails
+ * that were blacklisted due to processing failures.
+ */
+function clearNonYoutubeProcessedIds() {
+  const youtubeIds = new Set();
+  [getSheet(TABS.INBOX), getSheet(TABS.ARCHIVE)].forEach(sheet => {
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return;
+    const data = sheet.getRange(2, 1, lastRow - 1, COL.SOURCE_ID).getValues();
+    data.forEach(row => {
+      if (row[COL.SOURCE_TYPE - 1] === SOURCE.YOUTUBE && row[COL.SOURCE_ID - 1]) {
+        youtubeIds.add(String(row[COL.SOURCE_ID - 1]));
+      }
+    });
+  });
+
+  const before = getProcessedIds();
+  const kept   = Array.from(before).filter(id => youtubeIds.has(id));
+  setProperty(PROP.PROCESSED_IDS, JSON.stringify(kept));
+  Logger.log(`clearNonYoutubeProcessedIds: ${before.size} → ${kept.length} entries kept (removed ${before.size - kept.length}).`);
+}
+
+/**
  * Trims the PROCESSED_IDS store to the current 500-entry cap.
  * Run once manually from the Apps Script editor if the store was allowed
  * to grow beyond the cap before this limit was enforced in addProcessedId.
