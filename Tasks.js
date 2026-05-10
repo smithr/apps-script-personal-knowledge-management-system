@@ -58,9 +58,16 @@ function fetchPendingTasks(taskListId) {
     // If the notes field contains a URL, use it as the item URL; otherwise use a Tasks deep link
     const url = urlFromTitle || extractUrl(notes) || `https://tasks.google.com/`;
 
+    // If the task title is itself a URL, resolve the actual page title
+    let title = task.title;
+    if (urlFromTitle) {
+      const resolved = fetchPageTitle(url);
+      if (resolved) title = resolved;
+    }
+
     newItems.push(normalizeItem({
       sourceType:  SOURCE.TASKS,
-      title:       task.title,
+      title:       title,
       url:         url,
       content:     notes ? `${task.title}\n\n${notes}` : task.title,
       rawMetadata: { taskId: task.id, taskListId },

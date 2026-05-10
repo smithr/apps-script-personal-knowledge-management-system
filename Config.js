@@ -21,6 +21,7 @@ const PROP = {
   SYNTHESIS_DOC_ID:      'SYNTHESIS_DOC_ID',      // cached ID of the Weekly Synthesis doc
   WIKI_FOLDER_ID:        'WIKI_FOLDER_ID',        // cached Drive folder ID for /Wiki/ subfolder
   WIKI_INDEX_DOC_ID:     'WIKI_INDEX_DOC_ID',     // cached Doc ID for the Wiki Index
+  RAW_FOLDER_ID:         'RAW_FOLDER_ID',         // cached Drive folder ID for /raw/ subfolder
 };
 
 // ─── Sheet Tab Names ─────────────────────────────────────────────────────────

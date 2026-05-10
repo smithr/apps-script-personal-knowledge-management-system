@@ -75,6 +75,31 @@ function stripHtml(html) {
  * @param {string} url
  * @returns {string}
  */
+/**
+ * Fetches the HTML <title> tag for a URL.
+ * Returns an empty string if the fetch fails or no title element is found.
+ *
+ * @param {string} url
+ * @returns {string}
+ */
+function fetchPageTitle(url) {
+  if (!url || !url.startsWith('http')) return '';
+  try {
+    const response = UrlFetchApp.fetch(url, {
+      muteHttpExceptions: true,
+      followRedirects:    true,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PKM-Bot/1.0)' },
+    });
+    if (response.getResponseCode() !== 200) return '';
+    const match = response.getContentText().match(/<title[^>]*>([^<]{1,300})<\/title>/i);
+    if (!match) return '';
+    return match[1].replace(/\s+/g, ' ').trim();
+  } catch (e) {
+    Logger.log(`fetchPageTitle failed for ${url}: ${e.message}`);
+    return '';
+  }
+}
+
 function fetchUrlContent(url) {
   if (!url || !url.startsWith('http')) return '';
   try {

@@ -7,6 +7,9 @@
 # Node / misc
 node_modules/
 
+# Local data files — source of truth lives in Drive
+pkm-library-index.json
+
 
 # Phantom zero byte files that show up from time to time because of Claude bug
 .bashrc

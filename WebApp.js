@@ -1090,6 +1090,7 @@ function handleSaveConfirm(itemId, item, selectedTags) {
     const docLink = saveItemToDoc(item, summary, selectedTags);
     addItemToLibrary(item, summary, selectedTags, docLink);
     updateItemStatusAndDocLink(itemId, STATUS.SAVED, docLink);
+    writeRawItem(item, summary, selectedTags);
 
     const tagList  = selectedTags.map(escapeHtml).join(', ');
     const webAppUrl = getProperty(PROP.WEBAPP_URL);

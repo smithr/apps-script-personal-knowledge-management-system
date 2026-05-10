@@ -11,3 +11,9 @@ node_modules/**
 !**/*.js
 !**/*.ts
 !**/*.html
+
+# local-only files that must not be pushed to Apps Script
+backfill-titles.js
+pkm-library-index.json
+docs/**
+.claude/**
