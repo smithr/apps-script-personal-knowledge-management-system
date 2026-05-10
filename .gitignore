@@ -2,7 +2,7 @@
 .clasp.json
 
 # Claude local settings
-.claude/settings.local.json
+.claude/
 
 # Node / misc
 node_modules/
