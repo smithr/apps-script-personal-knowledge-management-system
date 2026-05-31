@@ -45,7 +45,7 @@ function getOrCreateRawFolder() {
  * @param {string} title
  * @returns {string}
  */
-function slugify(title) {
+function _rawSlugify(title) {
   return String(title)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -64,7 +64,7 @@ function slugify(title) {
  * @param {string}   fullText     - Raw content body (may be empty)
  * @returns {string} Complete markdown file content
  */
-function buildRawMarkdown(item, summary, selectedTags, fullText) {
+function _rawBuildMarkdown(item, summary, selectedTags, fullText) {
   const frontmatter = [
     '---',
     `id: ${String(item.itemId || '')}`,
@@ -95,7 +95,7 @@ function buildRawMarkdown(item, summary, selectedTags, fullText) {
  * @param {string} url
  * @returns {string}
  */
-function fetchGmailContent(url) {
+function _rawFetchGmailContent(url) {
   const match = String(url).match(/#[^/]+\/([a-f0-9]+)$/i);
   if (!match) {
     Logger.log(`RawStore: could not extract threadId from Gmail URL: ${url}`);
@@ -122,7 +122,7 @@ function fetchGmailContent(url) {
  * @param {string} url - YouTube video URL (https://www.youtube.com/watch?v={videoId})
  * @returns {string}
  */
-function fetchYouTubeContent(url) {
+function _rawFetchYouTubeContent(url) {
   const match = String(url).match(/[?&]v=([^&]+)/);
   if (!match) {
     Logger.log(`RawStore: could not extract videoId from YouTube URL: ${url}`);
@@ -130,7 +130,8 @@ function fetchYouTubeContent(url) {
   }
   const videoId = match[1];
 
-  // Attempt 1: timedtext API returns caption XML for most public videos
+  // Attempt 1: timedtext API returns caption XML for most public videos.
+  // lang=en is English-only; videos without English captions will fall through to Attempt 2.
   try {
     const timedtextUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`;
     const response = UrlFetchApp.fetch(timedtextUrl, {
@@ -184,19 +185,21 @@ function fetchYouTubeContent(url) {
  * @param {Object} summary - Parsed summaryJson
  * @returns {string}
  */
-function buildFullText(item, summary) {
+function _rawBuildFullText(item, summary) {
   switch (item.sourceType) {
     case SOURCE.GMAIL:
-      return fetchGmailContent(item.url);
+      return _rawFetchGmailContent(item.url);
 
     case SOURCE.YOUTUBE:
-      return fetchYouTubeContent(item.url);
+      return _rawFetchYouTubeContent(item.url);
 
     case SOURCE.TASKS: {
       // Prefer fullSummary when it has content — covers paywalled items where the
       // user pasted the article text. UrlFetchApp has no configurable timeout; the
       // Apps Script infrastructure enforces ~30 s and fetchUrlContent catches the
       // resulting exception, but we avoid the wait entirely when fullSummary is rich.
+      // >100 chars means Gemini produced a real summary — skip URL fetch to
+      // avoid unnecessary quota use and potential paywall/redirect timeouts.
       if (summary.fullSummary && summary.fullSummary.length > 100) {
         return summary.fullSummary;
       }
@@ -230,14 +233,14 @@ function writeRawItem(item, summary, selectedTags) {
   try {
     const folderId = getOrCreateRawFolder();
     const folder   = DriveApp.getFolderById(folderId);
-    const fullText = buildFullText(item, summary);
-    const markdown = buildRawMarkdown(item, summary, selectedTags, fullText);
-    const filename = item.itemId + '-' + slugify(item.title) + '.md';
+    const filename = item.itemId + '-' + _rawSlugify(item.title) + '.md';
     const existing = folder.getFilesByName(filename);
     if (existing.hasNext()) {
       Logger.log(`RawStore: ${filename} already exists — skipping`);
       return;
     }
+    const fullText = _rawBuildFullText(item, summary);
+    const markdown = _rawBuildMarkdown(item, summary, selectedTags, fullText);
     folder.createFile(filename, markdown, MimeType.PLAIN_TEXT);
     Logger.log(`RawStore: wrote "${filename}" (${markdown.length} chars, body: ${fullText.length} chars)`);
   } catch (e) {
