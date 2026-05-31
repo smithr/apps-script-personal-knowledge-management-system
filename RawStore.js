@@ -233,6 +233,11 @@ function writeRawItem(item, summary, selectedTags) {
     const fullText = buildFullText(item, summary);
     const markdown = buildRawMarkdown(item, summary, selectedTags, fullText);
     const filename = item.itemId + '-' + slugify(item.title) + '.md';
+    const existing = folder.getFilesByName(filename);
+    if (existing.hasNext()) {
+      Logger.log(`RawStore: ${filename} already exists — skipping`);
+      return;
+    }
     folder.createFile(filename, markdown, MimeType.PLAIN_TEXT);
     Logger.log(`RawStore: wrote "${filename}" (${markdown.length} chars, body: ${fullText.length} chars)`);
   } catch (e) {
