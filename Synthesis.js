@@ -1,3 +1,6 @@
+// DEPRECATED: replaced by claude-obsidian /wiki-query and /autoresearch skills.
+// Triggers removed. File kept for reference; delete once the Obsidian vault is stable.
+
 /**
  * Synthesis.js
  * Weekly synthesis pipeline. Reads all Pending and Saved items from the past

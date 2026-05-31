@@ -1,3 +1,6 @@
+// DEPRECATED: replaced by claude-obsidian /wiki-ingest skill.
+// Triggers removed. File kept for reference; delete once the Obsidian vault is stable.
+
 /**
  * Wiki.js
  * Weekly wiki generation pipeline. Reads all saved items from the library index,
