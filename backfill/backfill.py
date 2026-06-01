@@ -50,7 +50,7 @@ def build_markdown(item: dict, body: str) -> str:
     short_summary = json.dumps(item.get('shortSummary', ''))
     return '\n'.join([
         '---',
-        f"id: {item['id']}",
+        f"id: {item.get('id', '')}",
         f"title: {json.dumps(item.get('title', ''))}",
         f"url: {item.get('url', '')}",
         f"date: {item.get('date', '')}",
