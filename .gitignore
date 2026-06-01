@@ -7,6 +7,9 @@
 # Node / misc
 node_modules/
 
+# Python virtual environment
+backfill/.venv/
+
 # Local data files — source of truth lives in Drive
 pkm-library-index.json
 
