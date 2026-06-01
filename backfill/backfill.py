@@ -38,7 +38,7 @@ def fetch_content(url: str, source_type: str, short_summary: str) -> str:
         if downloaded:
             text = trafilatura.extract(downloaded)
             if text:
-                return text[:100000]
+                return text[:50000]
     except Exception as e:
         print(f"    trafilatura failed: {e}")
 
