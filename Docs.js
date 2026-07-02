@@ -342,3 +342,9 @@ function getCurrentQuarterLabel() {
   const quarter = Math.ceil((now.getMonth() + 1) / 3);
   return `${year}-Q${quarter}`;
 }
+
+
+function testDocCreate() {
+  const doc = DocumentApp.create('test-delete-me');
+  Logger.log(doc.getId());
+}

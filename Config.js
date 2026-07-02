@@ -156,7 +156,7 @@ function removeProcessedId(id) {
  * then run this function from the Apps Script editor.
  */
 function reprocessItem() {
-  removeProcessedId('REPLACE_ME');
+  removeProcessedId('REPLACEME');
 }
 
 /**

@@ -14,9 +14,15 @@ function runTasksPipeline() {
   const newItems   = fetchPendingTasks(taskListId);
   Logger.log(`Tasks: ${newItems.length} new task(s) found`);
 
+  // Use same batching logic that we have in place for YouTube videos
+  const batch = newItems.slice(0, YOUTUBE_BATCH_SIZE);
+  if (newItems.length > YOUTUBE_BATCH_SIZE) {
+    Logger.log(`Tasks: processing ${batch.length} of ${newItems.length} (batch limit ${YOUTUBE_BATCH_SIZE})`);
+  }
+
   const processedIds = [];
   try {
-    newItems.forEach(item => {
+    batch.forEach(item => {
       try {
         const summary = summarizeItem(item);
         addItemToInbox(item, summary);
