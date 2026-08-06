@@ -17,3 +17,4 @@ backfill-titles.js
 pkm-library-index.json
 docs/**
 .claude/**
+backfill/**

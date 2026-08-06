@@ -55,8 +55,10 @@ function _rawSlugify(title) {
 
 /**
  * Assembles the markdown file content: YAML frontmatter followed by the full
- * text body. If fullText is empty only the frontmatter block is written —
- * the wiki compiler will use shortSummary as its signal for that item.
+ * text body. fullText normally includes the full structured Gemini summary
+ * (see _rawBuildFullText) so it's empty only when Gemini produced no summary
+ * fields at all — in that rare case only the frontmatter block is written,
+ * and the wiki compiler falls back to shortSummary as its signal for the item.
  *
  * @param {Object}   item         - Row object from Sheets (itemId, title, url, dateAdded, sourceType)
  * @param {Object}   summary      - Parsed summaryJson (shortSummary, fullSummary)
@@ -83,6 +85,38 @@ function _rawBuildMarkdown(item, summary, selectedTags, fullText) {
 }
 
 // ─── Source-Specific Content Fetch ────────────────────────────────────────────
+
+/**
+ * Below this character count, raw fetched content (transcript, description,
+ * email body, article text) is considered too thin to stand alone and the
+ * full structured Gemini summary (fullSummary + keyTerms + keyPoints +
+ * actionItems — already computed, no extra API cost) is appended after it.
+ */
+const RAW_FETCH_THIN_THRESHOLD = 500;
+
+/**
+ * Formats the full structured Gemini summary as a markdown section.
+ * Used as a fallback body — or supplement — when the raw source fetch comes
+ * back empty, too thin, or is known to be lower-quality (e.g. a YouTube video
+ * description standing in for a missing transcript).
+ *
+ * @param {Object} summary - Parsed summaryJson
+ * @returns {string}
+ */
+function _rawBuildGeminiSummarySection(summary) {
+  const parts = [];
+  if (summary.fullSummary) parts.push(summary.fullSummary);
+  if (summary.keyTerms && summary.keyTerms.length > 0) {
+    parts.push('Key Terms:\n' + summary.keyTerms.map(t => `- ${t}`).join('\n'));
+  }
+  if (summary.keyPoints && summary.keyPoints.length > 0) {
+    parts.push('Key Points:\n' + summary.keyPoints.map(p => `- ${p}`).join('\n'));
+  }
+  if (summary.actionItems && summary.actionItems.length > 0) {
+    parts.push('Action Items:\n' + summary.actionItems.map(a => `- ${a}`).join('\n'));
+  }
+  return parts.join('\n\n');
+}
 
 /**
  * Fetches the full email body for a Gmail item.
@@ -117,16 +151,21 @@ function _rawFetchGmailContent(url) {
  * First tries the YouTube timedtext API (works for most public videos with
  * auto-generated or uploaded captions). Falls back to the video description
  * via the YouTube Advanced Service if captions are unavailable.
- * Returns an empty string if both fail.
+ *
+ * The description fallback is marked `isPrimary: false` even when it returns
+ * plenty of characters — it's marketing copy, not the video's actual content,
+ * and far thinner than Gemini's transcript-based analysis. Callers use this
+ * flag (not just length) to decide whether to supplement with the full
+ * Gemini summary.
  *
  * @param {string} url - YouTube video URL (https://www.youtube.com/watch?v={videoId})
- * @returns {string}
+ * @returns {{ text: string, isPrimary: boolean }}
  */
 function _rawFetchYouTubeContent(url) {
   const match = String(url).match(/[?&]v=([^&]+)/);
   if (!match) {
     Logger.log(`RawStore: could not extract videoId from YouTube URL: ${url}`);
-    return '';
+    return { text: '', isPrimary: false };
   }
   const videoId = match[1];
 
@@ -147,7 +186,7 @@ function _rawFetchYouTubeContent(url) {
           .replace(/&#39;/g, "'").replace(/&quot;/g, '"')
           .replace(/\s+/g, ' ')
           .trim();
-        if (transcript) return transcript.slice(0, 50000);
+        if (transcript) return { text: transcript.slice(0, 50000), isPrimary: true };
       }
     }
   } catch (e) {
@@ -159,63 +198,85 @@ function _rawFetchYouTubeContent(url) {
     const result = YouTube.Videos.list('snippet', { id: videoId });
     const video  = (result.items || [])[0];
     if (video && video.snippet) {
-      return [video.snippet.title, video.snippet.description]
+      const description = [video.snippet.title, video.snippet.description]
         .filter(Boolean).join('\n\n').slice(0, 50000);
+      return { text: description, isPrimary: false };
     }
   } catch (e) {
     Logger.log(`RawStore: YouTube description fetch failed — ${e.message}`);
   }
 
-  return '';
+  return { text: '', isPrimary: false };
 }
 
 /**
  * Dispatches to the correct content fetch function based on item.sourceType.
+ * Returns the raw fetched text plus whether it's a primary/ground-truth source
+ * (real transcript, email body, fetched article) as opposed to a thin stand-in
+ * (video description, or no fetch at all).
  *
  * - Gmail:   re-fetches email body via GmailApp using threadId from URL
- * - YouTube: tries transcript, falls back to description
- * - Tasks:   fetches the web page body when item.url is a real URL;
- *            falls back to summary.fullSummary for plain tasks (tasks.google.com URL)
- * - Capture: uses summary.fullSummary — content was user-supplied at capture time,
- *            avoids re-fetching paywalled content
+ * - YouTube: tries transcript (primary), falls back to description (not primary)
+ * - Tasks:   fetches the web page body when item.url is a real URL (primary);
+ *            skips the fetch entirely when Gemini already produced a rich
+ *            summary, to avoid unnecessary quota use and paywall/redirect
+ *            timeouts (UrlFetchApp has no configurable timeout; Apps Script
+ *            infrastructure enforces ~30s)
+ * - Capture: no raw fetch — content was user-supplied at capture time and
+ *            re-fetching risks hitting a paywall the user already got past
  *
  * fetchUrlContent() is defined in Utils.js (50,000-char cap, handles failures).
+ *
+ * @param {Object} item    - Row object from Sheets
+ * @param {Object} summary - Parsed summaryJson
+ * @returns {{ text: string, isPrimary: boolean }}
+ */
+function _rawFetchSourceContent(item, summary) {
+  switch (item.sourceType) {
+    case SOURCE.GMAIL:
+      return { text: _rawFetchGmailContent(item.url), isPrimary: true };
+
+    case SOURCE.YOUTUBE:
+      return _rawFetchYouTubeContent(item.url);
+
+    case SOURCE.TASKS: {
+      if (summary.fullSummary && summary.fullSummary.length > 100) {
+        return { text: '', isPrimary: false };
+      }
+      const url = String(item.url || '');
+      const isWebUrl = url.startsWith('http') && !url.includes('tasks.google.com');
+      return { text: isWebUrl ? (fetchUrlContent(url) || '') : '', isPrimary: true };
+    }
+
+    case SOURCE.CAPTURE:
+      return { text: '', isPrimary: false };
+
+    default:
+      return { text: '', isPrimary: false };
+  }
+}
+
+/**
+ * Builds the raw markdown body: the fetched source content when it's a rich
+ * primary source, with the full structured Gemini summary (fullSummary +
+ * keyTerms + keyPoints + actionItems) appended whenever that content is
+ * missing, thin (< RAW_FETCH_THIN_THRESHOLD chars), or only ever a thin
+ * stand-in (e.g. a YouTube description filling in for a missing transcript).
  *
  * @param {Object} item    - Row object from Sheets
  * @param {Object} summary - Parsed summaryJson
  * @returns {string}
  */
 function _rawBuildFullText(item, summary) {
-  switch (item.sourceType) {
-    case SOURCE.GMAIL:
-      return _rawFetchGmailContent(item.url);
+  const { text: fetched, isPrimary } = _rawFetchSourceContent(item, summary);
 
-    case SOURCE.YOUTUBE:
-      return _rawFetchYouTubeContent(item.url);
-
-    case SOURCE.TASKS: {
-      // Prefer fullSummary when it has content — covers paywalled items where the
-      // user pasted the article text. UrlFetchApp has no configurable timeout; the
-      // Apps Script infrastructure enforces ~30 s and fetchUrlContent catches the
-      // resulting exception, but we avoid the wait entirely when fullSummary is rich.
-      // >100 chars means Gemini produced a real summary — skip URL fetch to
-      // avoid unnecessary quota use and potential paywall/redirect timeouts.
-      if (summary.fullSummary && summary.fullSummary.length > 100) {
-        return summary.fullSummary;
-      }
-      const url = String(item.url || '');
-      const isWebUrl = url.startsWith('http') && !url.includes('tasks.google.com');
-      if (!isWebUrl) return summary.fullSummary || '';
-      // Fall back to fullSummary if the fetch returns empty (paywall redirect, etc.)
-      return fetchUrlContent(url) || summary.fullSummary || '';
-    }
-
-    case SOURCE.CAPTURE:
-      return summary.fullSummary || '';
-
-    default:
-      return '';
+  if (isPrimary && fetched.length >= RAW_FETCH_THIN_THRESHOLD) {
+    return fetched;
   }
+
+  const geminiSection = _rawBuildGeminiSummarySection(summary);
+  if (!geminiSection) return fetched;
+  return fetched ? `${fetched}\n\n---\n\n${geminiSection}` : geminiSection;
 }
 
 /**
