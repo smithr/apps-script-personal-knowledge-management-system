@@ -289,16 +289,23 @@ function _rawBuildFullText(item, summary) {
  * @param {Object}   item         - Row object from Sheets (itemId, title, url, dateAdded, sourceType)
  * @param {Object}   summary      - Parsed summaryJson (shortSummary, fullSummary)
  * @param {string[]} selectedTags - User-confirmed tags
+ * @param {boolean}  [force]      - When true, trashes and rewrites a file that already
+ *                                  exists instead of skipping it. Used by backfill helpers
+ *                                  to regenerate files written before a content-fetch fix.
  */
-function writeRawItem(item, summary, selectedTags) {
+function writeRawItem(item, summary, selectedTags, force) {
   try {
     const folderId = getOrCreateRawFolder();
     const folder   = DriveApp.getFolderById(folderId);
     const filename = item.itemId + '-' + _rawSlugify(item.title) + '.md';
     const existing = folder.getFilesByName(filename);
     if (existing.hasNext()) {
-      Logger.log(`RawStore: ${filename} already exists — skipping`);
-      return;
+      if (!force) {
+        Logger.log(`RawStore: ${filename} already exists — skipping`);
+        return;
+      }
+      while (existing.hasNext()) existing.next().setTrashed(true);
+      Logger.log(`RawStore: ${filename} already exists — force overwriting`);
     }
     const fullText = _rawBuildFullText(item, summary);
     const markdown = _rawBuildMarkdown(item, summary, selectedTags, fullText);
@@ -307,6 +314,64 @@ function writeRawItem(item, summary, selectedTags) {
   } catch (e) {
     Logger.log(`RawStore: failed for item "${item.itemId}" — ${e.message}`);
   }
+}
+
+// ─── One-off Maintenance ────────────────────────────────────────────────────
+
+/**
+ * Regenerates specific /PKM/raw/ files that were written before the
+ * RAW_FETCH_THIN_THRESHOLD fallback existed, so they got frontmatter-only
+ * (or thin-description-only) bodies instead of the full Gemini summary.
+ * Matches items by exact title text against TARGET_TITLES below (confirmed
+ * via a prior slug-matching pass — see git history). Looks in both Archive
+ * and Saved Inbox rows.
+ *
+ * Run this once manually from the Apps Script editor. Safe to re-run —
+ * unmatched titles are logged and skipped, matched files are force-overwritten.
+ */
+function backfillThinRawFiles() {
+  const TARGET_TITLES = [
+    'How to Start a Speech That Makes People Whisper ‘Damn, that’s good.’',
+    '10 mindful habits that transformed my life',
+    'Why Some Men Look Built Without Looking Like They Try',
+    'I Quit the Rat Race at 54—7 Years Later, Here’s What I Know',
+  ];
+
+  const archiveRows = getSheet(TABS.ARCHIVE).getDataRange().getValues().slice(1);
+  const inboxRows   = getSheet(TABS.INBOX).getDataRange().getValues().slice(1)
+    .filter(row => row[COL.STATUS - 1] === STATUS.SAVED);
+  const rows = archiveRows.concat(inboxRows);
+
+  let matched = 0;
+  TARGET_TITLES.forEach(targetTitle => {
+    const candidates = rows.filter(r => String(r[COL.TITLE - 1] || '').trim() === targetTitle);
+
+    if (candidates.length !== 1) {
+      Logger.log(candidates.length === 0
+        ? `backfillThinRawFiles: no row matched title "${targetTitle}"`
+        : `backfillThinRawFiles: "${targetTitle}" has ${candidates.length} duplicate rows — skipping`);
+      return;
+    }
+    const row = candidates[0];
+
+    const item = {
+      itemId:     String(row[COL.ITEM_ID     - 1] || ''),
+      dateAdded:  String(row[COL.DATE_ADDED  - 1] || ''),
+      sourceType: String(row[COL.SOURCE_TYPE - 1] || ''),
+      title:      String(row[COL.TITLE       - 1] || ''),
+      url:        String(row[COL.URL         - 1] || ''),
+    };
+    let summary = { shortSummary: '', fullSummary: '' };
+    try { summary = JSON.parse(row[COL.SUMMARY_JSON - 1]); } catch (_) {}
+    const selectedTags = String(row[COL.TAGS - 1] || '')
+      .split(',').map(t => t.trim()).filter(Boolean);
+
+    Logger.log(`backfillThinRawFiles: regenerating "${item.title}"`);
+    writeRawItem(item, summary, selectedTags, true);
+    matched++;
+  });
+
+  Logger.log(`backfillThinRawFiles: done — ${matched}/${TARGET_TITLES.length} matched and regenerated`);
 }
 
 // ─── Test Helpers (run manually from Apps Script editor) ───────────────────────
