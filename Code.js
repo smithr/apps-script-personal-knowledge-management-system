@@ -33,6 +33,7 @@ function runFrequentPipeline() {
  * Runs the YouTube source connector.
  */
 function runHourlyPipeline() {
+  // gemini-2.5-flash is the old model
   Logger.log('--- runHourlyPipeline start ---');
   try {
     runYouTubePipeline();

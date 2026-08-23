@@ -164,6 +164,11 @@ function summarizeItem(item) {
   }
 
   const payload = {
+    // systemInstruction: {
+    //   parts: [{
+    //     text: "You are an expert note-taker. You MUST return valid JSON. Inside text fields like 'fullSummary', separate distinct concepts using double line breaks (\\n\\n) so each point forms its own clear paragraph."
+    //   }]
+    // },
     contents: [{
       parts,
     }],
